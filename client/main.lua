@@ -34,6 +34,8 @@ local NpcData = {
 }
 
 local taxiPed = nil
+local onDuty = false -- track whether player is on duty for taxi job
+local taxiBlip = nil -- store main taxi blip so we can remove it when off-duty
 
 local function resetNpcTask()
     NpcData = {
@@ -216,6 +218,45 @@ local function createNpcPickUpLocation()
     })
 end
 
+-- Duty management
+local function removeLocationsBlip()
+    if taxiBlip ~= nil then
+        RemoveBlip(taxiBlip)
+        taxiBlip = nil
+    end
+end
+
+local function setDuty(state, noNotify)
+    if state == onDuty then return end
+    if state then
+        if QBX.PlayerData.job.name ~= 'taxi' then
+            exports.qbx_core:Notify('You are not a taxi driver', 'error')
+            return
+        end
+        onDuty = true
+        setupGarageZone()
+        setupTaxiParkingZone()
+        setLocationsBlip()
+        if not noNotify then exports.qbx_core:Notify('You are now on duty', 'success') end
+    else
+        -- Prevent going off duty during active tasks
+        if NpcData.Active or NpcData.NpcTaken then
+            exports.qbx_core:Notify('Cannot go off duty during an active NPC mission', 'error')
+            return
+        end
+        if meterIsOpen or meterActive then
+            exports.qbx_core:Notify('Cannot go off duty while the meter is open or active', 'error')
+            return
+        end
+
+        onDuty = false
+        destroyGarageZone()
+        destroyTaxiParkingZone()
+        removeLocationsBlip()
+        if not noNotify then exports.qbx_core:Notify('You are now off duty', 'inform') end
+    end
+end
+
 
 
 local function enumerateEntitiesWithinDistance(entities, isPlayerEntities, coords, maxDistance)
@@ -358,7 +399,8 @@ end
 
 local function setLocationsBlip()
     if not config.useBlips then return end
-    local taxiBlip = AddBlipForCoord(config.locations.main.coords.x, config.locations.main.coords.y, config.locations.main.coords.z)
+    if taxiBlip ~= nil then return end
+    taxiBlip = AddBlipForCoord(config.locations.main.coords.x, config.locations.main.coords.y, config.locations.main.coords.z)
     SetBlipSprite(taxiBlip, 198)
     SetBlipDisplay(taxiBlip, 4)
     SetBlipScale(taxiBlip, 0.6)
@@ -370,6 +412,11 @@ local function setLocationsBlip()
 end
 
 local function taxiGarage()
+    if not onDuty then
+        exports.qbx_core:Notify('You must be on duty to access the taxi garage', 'error')
+        return
+    end
+
     local registeredMenu = {
         id = 'garages_depotlist',
         title = locale('menu.taxi_menu_header'),
@@ -454,6 +501,10 @@ function setupTaxiParkingZone()
         debug = config.debugPoly,
         inside = function()
             if QBX.PlayerData.job.name ~= 'taxi' then return end
+            if not onDuty then
+                exports.qbx_core:Notify('You are off duty', 'error')
+                return
+            end
             if IsControlJustPressed(0, 38) then
                 if whitelistedVehicle() then
                     if meterIsOpen then
@@ -482,6 +533,10 @@ local function destroyTaxiParkingZone()
 end
 
 RegisterNetEvent('qb-taxi:client:TakeVehicle', function(data)
+    if not onDuty then
+        exports.qbx_core:Notify('You must be on duty to take a taxi', 'error')
+        return
+    end
     local SpawnPoint = getVehicleSpawnPoint()
     if SpawnPoint then
         local coords = config.cabSpawns[SpawnPoint]
@@ -502,6 +557,11 @@ end)
 
 -- Events
 RegisterNetEvent('qb-taxi:client:DoTaxiNpc', function()
+    if not onDuty then
+        exports.qbx_core:Notify('You must be on duty to start an NPC mission', 'error')
+        return
+    end
+
     if whitelistedVehicle() then
         if not NpcData.Active then
             NpcData.CurrentNpc = math.random(1, #sharedConfig.npcLocations.takeLocations)
@@ -703,7 +763,18 @@ end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
     isLoggedIn = true
+    -- default to on-duty for players who have the taxi job to preserve previous behaviour
+    onDuty = (QBX.PlayerData.job.name == 'taxi')
     init()
+end)
+
+-- Events to control duty state
+RegisterNetEvent('qb-taxijob:client:SetDuty', function(state)
+    setDuty(state)
+end)
+
+RegisterNetEvent('qb-taxijob:client:ToggleDuty', function()
+    setDuty(not onDuty)
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
