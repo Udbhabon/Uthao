@@ -774,7 +774,14 @@ RegisterNetEvent('qb-taxijob:client:SetDuty', function(state)
 end)
 
 RegisterNetEvent('qb-taxijob:client:ToggleDuty', function()
-    setDuty(not onDuty)
+    local newState = not onDuty
+    -- suppress default notification from setDuty and send custom messages below
+    setDuty(newState, true)
+    if newState then
+        exports.qbx_core:Notify('You are Onduty in Taxijob', 'success')
+    else
+        exports.qbx_core:Notify('You are Offduty in Taxijob', 'inform')
+    end
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
