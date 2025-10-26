@@ -1,0 +1,28 @@
+# Ignore local configuration files
+config.json
+*.log
+
+# Ignore compiled files and binaries
+*.o
+*.so
+*.dll
+*.exe
+
+# Ignore cache files
+cache/
+logs/
+
+# Ignore temporary files created by editors
+*.swp
+*~
+.idea/
+.vscode/
+
+# Ignore NPM modules if using Node.js (for server-side JS scripts)
+node_modules/
+
+# Ignore other temporary or backup files
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
