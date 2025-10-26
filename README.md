@@ -1,6 +1,3 @@
-# qbx_taxijob
-Taxi Job For Qbox
-
 ## Overview
 Lightweight taxi job resource for QBox. Adds NPC fares, a meter UI, polyzones for pickup/dropoff and an on-duty/off-duty toggle for taxi drivers.
 
