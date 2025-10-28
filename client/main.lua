@@ -61,17 +61,30 @@ local function resetMeter()
 end
 
 local function whitelistedVehicle()
+    if not cache.vehicle then return false end
+
     local veh = GetEntityModel(cache.vehicle)
     local retval = false
 
     for i = 1, #config.allowedVehicles, 1 do
         if veh == joaat(config.allowedVehicles[i].model) then
             retval = true
+            break
         end
     end
 
-    if veh == `dynasty` then
+    -- keep legacy hard-coded allowance for dynasty (use joaat to avoid backtick syntax)
+    if not retval and veh == joaat('dynasty') then
         retval = true
+    end
+
+    -- If still not whitelisted, check if the current vehicle is a player-owned vehicle by plate
+    if not retval then
+        local plate = GetVehicleNumberPlateText(cache.vehicle) or ''
+        if plate ~= '' then
+            local ok = lib.callback.await('qb-taxijob:server:DoesPlateExist', false, plate)
+            if ok then retval = true end
+        end
     end
 
     return retval
@@ -234,9 +247,9 @@ local function setDuty(state, noNotify)
             return
         end
         onDuty = true
-        setupGarageZone()
-        setupTaxiParkingZone()
-        setLocationsBlip()
+        if type(setupGarageZone) == 'function' then pcall(setupGarageZone) end
+        if type(setupTaxiParkingZone) == 'function' then pcall(setupTaxiParkingZone) end
+        if type(setLocationsBlip) == 'function' then pcall(setLocationsBlip) end
         if not noNotify then exports.qbx_core:Notify('You are now on duty', 'success') end
     else
         -- Prevent going off duty during active tasks
@@ -250,9 +263,9 @@ local function setDuty(state, noNotify)
         end
 
         onDuty = false
-        destroyGarageZone()
-        destroyTaxiParkingZone()
-        removeLocationsBlip()
+        if type(destroyGarageZone) == 'function' then pcall(destroyGarageZone) end
+        if type(destroyTaxiParkingZone) == 'function' then pcall(destroyTaxiParkingZone) end
+        if type(removeLocationsBlip) == 'function' then pcall(removeLocationsBlip) end
         if not noNotify then exports.qbx_core:Notify('You are now off duty', 'inform') end
     end
 end
@@ -311,7 +324,7 @@ local function calculateFareAmount()
 
             local fareAmount = 0
 
-            if(config.meter.useGpsPrice) then
+            if (config.meter.useGpsPrice) and pickupLocation and dropOffLocation then
                 local distanceBetweenPickupAndDropoff = CalculateTravelDistanceBetweenPoints(pickupLocation.x, pickupLocation.y, pickupLocation.z, dropOffLocation.x, dropOffLocation.y, dropOffLocation.z) / 1609 -- Convert to miles
                 fareAmount =  (distanceBetweenPickupAndDropoff * config.meter.defaultPrice) + config.meter.startingPrice
             else 
@@ -792,3 +805,37 @@ CreateThread(function()
     if not isLoggedIn then return end
     init()
 end)
+
+
+-- Plate check result from server
+RegisterNetEvent('qb-taxijob:client:CheckPlateResult', function(plate, exists)
+    print(('[qbx_taxijob] Server check: Plate=%s | playerVehicle=%s'):format(tostring(plate), tostring(exists)))
+end)
+
+-- Add a quick command to check current vehicle plate ownership and print debug to F8
+RegisterCommand('checkplate', function()
+    local ped = PlayerPedId()
+    if not IsPedInAnyVehicle(ped, false) then
+        print('[qbx_taxijob] Not in a vehicle')
+        return
+    end
+
+    local veh = GetVehiclePedIsIn(ped, false)
+    local plate = GetVehicleNumberPlateText(veh) or ''
+
+    -- Ask server to check the plate (server wrapper uses qbx_vehicles export)
+    TriggerServerEvent('qb-taxijob:server:CheckPlate', plate)
+
+    -- If the export is available client-side, call it directly as well for immediate feedback
+    -- Attempt client-side export safely (many servers expose this export server-side only)
+    if exports and exports.qbx_vehicles then
+        local ok, res = pcall(function()
+            return exports.qbx_vehicles:DoesPlayerVehiclePlateExist(plate)
+        end)
+        if ok then
+            print(('[qbx_taxijob] Client export: Plate=%s | playerVehicle=%s'):format(tostring(plate), tostring(res)))
+        else
+            print('[qbx_taxijob] Client export not available (server-only). Using server check instead.')
+        end
+    end
+end, false)
