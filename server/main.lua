@@ -1,5 +1,8 @@
 local sharedConfig = require 'config.shared'
 local ITEMS = exports.ox_inventory:Items()
+-- attempt to read client config for shared constants (fallback to defaults)
+local okClientCfg, clientConfig = pcall(require, 'config.client')
+if not okClientCfg then clientConfig = nil end
 
 local function nearTaxi(src)
     local ped = GetPlayerPed(src)
@@ -82,11 +85,153 @@ RegisterNetEvent('qb-taxijob:server:PlayerToggledDuty', function(state, coords)
         coordsStr = string.format('%.2f, %.2f, %.2f', tonumber(coords.x), tonumber(coords.y), tonumber(coords.z))
     end
 
+    -- update server-side duty state so server has an authoritative list for alerts
     if state then
+        dutyState[src] = true
         print(('[qbx_taxijob] [PLAYER TOGGLE] ON  -> src=%d name=%s cid=%s job=%s coords=[%s]'):format(src, pname, cid, jobname, coordsStr))
     else
+        dutyState[src] = false
         print(('[qbx_taxijob] [PLAYER TOGGLE] OFF -> src=%d name=%s cid=%s job=%s coords=[%s]'):format(src, pname, cid, jobname, coordsStr))
     end
+end)
+
+
+-- Ride booking: pending requests and handlers
+local pendingRequests = {}
+-- active assignments: driverSrc -> { requester = src, coords = coords }
+local activeAssignments = {}
+local assignedRequester = {}
+
+-- Server: player requests a ride
+RegisterNetEvent('qb-taxijob:server:BookRide', function(message, coords)
+    local src = source
+    if not src then return end
+    local reqId = tostring(os.time()) .. '-' .. tostring(math.random(1000, 9999))
+    local req = {
+        id = reqId,
+        requester = src,
+        coords = coords or {},
+        message = message or '',
+        assigned = false,
+        created = os.time()
+    }
+    pendingRequests[reqId] = req
+
+    -- find on-duty drivers
+    local drivers = {}
+    for k, v in pairs(dutyState) do
+        if v == true then table.insert(drivers, k) end
+    end
+
+    if #drivers == 0 then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'No taxi drivers are currently on duty.' } })
+        pendingRequests[reqId] = nil
+        return
+    end
+
+    -- Notify all on-duty drivers
+    for _, dsrc in ipairs(drivers) do
+        local requesterPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+        local rname = 'unknown'
+        if requesterPlayer and requesterPlayer.PlayerData and requesterPlayer.PlayerData.charinfo then
+            local ci = requesterPlayer.PlayerData.charinfo
+            rname = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (requesterPlayer.PlayerData.name or 'unknown')
+        end
+        TriggerClientEvent('qb-taxijob:client:IncomingRideRequest', dsrc, reqId, rname, req.coords, req.message)
+    end
+
+    -- Timeout: if no one accepts within 25 seconds, notify requester
+    SetTimeout(25000, function()
+        local r = pendingRequests[reqId]
+        if r and not r.assigned then
+            TriggerClientEvent('chat:addMessage', r.requester, { args = { '^1[qbx_taxijob]', 'No drivers accepted your ride request.' } })
+            pendingRequests[reqId] = nil
+        end
+    end)
+end)
+
+
+-- Server: drivers respond to a request
+RegisterNetEvent('qb-taxijob:server:RespondRideRequest', function(reqId, accept)
+    local src = source
+    if not src or not reqId then return end
+    local req = pendingRequests[reqId]
+    if not req then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'This ride request is no longer available.' } })
+        return
+    end
+
+    if accept then
+        if req.assigned then
+            -- someone already accepted
+            TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Ride already taken by another driver.' } })
+            return
+        end
+        req.assigned = src
+        pendingRequests[reqId] = nil
+        activeAssignments[src] = { requester = req.requester, coords = req.coords }
+        assignedRequester[req.requester] = src
+        -- schedule server-side forced cleanup in case client timers fail
+        local blipTime = (clientConfig and clientConfig.blipDissepiartime) or 30
+        SetTimeout((blipTime or 30) * 1000, function()
+            -- only clear if assignment still exists
+            if activeAssignments[src] and activeAssignments[src].requester == req.requester then
+                activeAssignments[src] = nil
+                assignedRequester[req.requester] = nil
+                TriggerClientEvent('qb-taxijob:client:ClearRideBlips', req.requester)
+                TriggerClientEvent('qb-taxijob:client:ClearRideBlips', src)
+                print(('[qbx_taxijob] Auto-cleared ride assignment %s after %d seconds'):format(reqId, blipTime))
+            end
+        end)
+
+        -- notify requester and all drivers
+        local driverPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+        local dname = 'unknown'
+        if driverPlayer and driverPlayer.PlayerData and driverPlayer.PlayerData.charinfo then
+            local ci = driverPlayer.PlayerData.charinfo
+            dname = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (driverPlayer.PlayerData.name or 'unknown')
+        end
+
+    TriggerClientEvent('chat:addMessage', req.requester, { args = { '^2[qbx_taxijob]', ('%s accepted your ride.'):format(dname) } })
+    TriggerClientEvent('qb-taxijob:client:RideAssigned', req.requester, src, dname, req.coords)
+    -- instruct driver to show pickup blip and start location updates
+    TriggerClientEvent('qb-taxijob:client:ShowPickupBlip', src, req.coords)
+
+        -- inform other drivers that it was taken
+        for k, v in pairs(dutyState) do
+            if v == true and k ~= src then
+                TriggerClientEvent('chat:addMessage', k, { args = { '^1[qbx_taxijob]', ('Ride request taken by %s'):format(dname) } })
+            end
+        end
+    else
+        -- declined; simple feedback
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'You declined the ride request.' } })
+    end
+end)
+
+
+-- Driver location relay: drivers send periodic updates which are relayed to the assigned requester
+RegisterNetEvent('qb-taxijob:server:DriverLocation', function(coords)
+    local src = source
+    if not src or not coords then return end
+    local assign = activeAssignments[src]
+    if not assign then return end
+    local requester = assign.requester
+    -- relay to requester so they can update the driver blip in realtime
+    TriggerClientEvent('qb-taxijob:client:DriverLocationUpdate', requester, src, coords)
+end)
+
+
+-- Optional: driver can signal ride complete to clear assignment and remove blips
+RegisterNetEvent('qb-taxijob:server:EndRide', function()
+    local src = source
+    local assign = activeAssignments[src]
+    if not assign then return end
+    local requester = assign.requester
+    activeAssignments[src] = nil
+    assignedRequester[requester] = nil
+    TriggerClientEvent('qb-taxijob:client:ClearRideBlips', requester)
+    TriggerClientEvent('qb-taxijob:client:ClearRideBlips', src)
 end)
 
 -- Server wrapper to check if a plate belongs to a player vehicle
