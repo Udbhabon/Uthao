@@ -25,30 +25,68 @@ AddEventHandler('QBCore:Server:SetDuty', function(source, onDuty)
         return
     end
 
-    -- Only allow taxi drivers to go on-duty for this resource
-    if onDuty then
-        if player.PlayerData.job and player.PlayerData.job.name == 'taxi' then
-            dutyState[src] = true
-            -- Tell the player's client to switch duty on for the taxi resource
-            TriggerClientEvent('qb-taxijob:client:SetDuty', src, true)
-            print(('[qbx_taxijob] Player %s set ON duty'):format(player.PlayerData.citizenid or tostring(src)))
-        else
-            -- Reject invalid on-duty attempt
-            print(('[qbx_taxijob] Player %s attempted to go ON duty but is not taxi job'):format(player.PlayerData.citizenid or tostring(src)))
+        -- Only allow taxi drivers to go on-duty for this resource
+        do
+            local pid = src
+            local cid = player.PlayerData and player.PlayerData.citizenid or 'unknown'
+            local jobname = (player.PlayerData and player.PlayerData.job and player.PlayerData.job.name) or 'unknown'
+            local pname = 'unknown'
+            if player.PlayerData and player.PlayerData.charinfo then
+                local ci = player.PlayerData.charinfo
+                pname = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (player.PlayerData.name or 'unknown')
+            else
+                pname = player.PlayerData and (player.PlayerData.name or 'unknown') or 'unknown'
+            end
+
+            if onDuty then
+                if jobname == 'taxi' then
+                    dutyState[pid] = true
+                    -- Tell the player's client to switch duty on for the taxi resource
+                    TriggerClientEvent('qb-taxijob:client:SetDuty', pid, true)
+                    print(('[qbx_taxijob] [DEBUG] Duty ON: src=%d name=%s cid=%s job=%s'):format(pid, pname, cid, jobname))
+                else
+                    print(('[qbx_taxijob] [DEBUG] Duty ON attempt rejected: src=%d name=%s cid=%s job=%s'):format(pid, pname, cid, jobname))
+                end
+            else
+                dutyState[pid] = false
+                TriggerClientEvent('qb-taxijob:client:SetDuty', pid, false)
+                print(('[qbx_taxijob] [DEBUG] Duty OFF: src=%d name=%s cid=%s job=%s'):format(pid, pname, cid, jobname))
+            end
         end
-    else
-        -- Going off duty: we don't have visibility into client-side active NPC missions here.
-        -- We still update server-side state and ask the client to set duty off; the client will enforce mission checks.
-        dutyState[src] = false
-        TriggerClientEvent('qb-taxijob:client:SetDuty', src, false)
-        print(('[qbx_taxijob] Player %s set OFF duty'):format(player.PlayerData.citizenid or tostring(src)))
-    end
 end)
 
 -- Cleanup when player disconnects
 AddEventHandler('playerDropped', function(reason)
     local src = source
     dutyState[src] = nil
+end)
+
+
+-- Server event: players in-resource may toggle duty locally (ToggleDuty). Listen and log for visibility.
+RegisterNetEvent('qb-taxijob:server:PlayerToggledDuty', function(state, coords)
+    local src = source
+    if not src then return end
+    local p = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+    local cid = p and p.PlayerData and p.PlayerData.citizenid or 'unknown'
+    local jobname = p and p.PlayerData and p.PlayerData.job and p.PlayerData.job.name or 'unknown'
+    local pname = 'unknown'
+    if p and p.PlayerData and p.PlayerData.charinfo then
+        local ci = p.PlayerData.charinfo
+        pname = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (p.PlayerData.name or 'unknown')
+    else
+        pname = p and (p.PlayerData and (p.PlayerData.name or 'unknown') or 'unknown') or 'unknown'
+    end
+
+    local coordsStr = 'unknown'
+    if coords and type(coords) == 'table' and coords.x and coords.y and coords.z then
+        coordsStr = string.format('%.2f, %.2f, %.2f', tonumber(coords.x), tonumber(coords.y), tonumber(coords.z))
+    end
+
+    if state then
+        print(('[qbx_taxijob] [PLAYER TOGGLE] ON  -> src=%d name=%s cid=%s job=%s coords=[%s]'):format(src, pname, cid, jobname, coordsStr))
+    else
+        print(('[qbx_taxijob] [PLAYER TOGGLE] OFF -> src=%d name=%s cid=%s job=%s coords=[%s]'):format(src, pname, cid, jobname, coordsStr))
+    end
 end)
 
 -- Server wrapper to check if a plate belongs to a player vehicle

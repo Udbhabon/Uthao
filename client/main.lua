@@ -790,6 +790,13 @@ RegisterNetEvent('qb-taxijob:client:ToggleDuty', function()
     local newState = not onDuty
     -- suppress default notification from setDuty and send custom messages below
     setDuty(newState, true)
+    -- inform the server so it can log/debug duty changes centrally (include player coords)
+    do
+        local ped = PlayerPedId()
+        local c = GetEntityCoords(ped)
+        local coords = { x = tonumber(string.format('%.2f', c.x)), y = tonumber(string.format('%.2f', c.y)), z = tonumber(string.format('%.2f', c.z)) }
+        TriggerServerEvent('qb-taxijob:server:PlayerToggledDuty', newState, coords)
+    end
     if newState then
         exports.qbx_core:Notify('You are Onduty in Taxijob', 'success')
     else
