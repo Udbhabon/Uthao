@@ -13,6 +13,12 @@ shared_scripts {
 client_scripts {
 	'@qbx_core/modules/playerdata.lua',
  	'client/main.lua',
+	'client/booking.lua',
+	'client/garage.lua',
+	'client/init.lua',
+	'client/meter.lua',
+	'client/npc.lua',
+	'client/state.lua'
 }
 
 server_script 'server/main.lua'
