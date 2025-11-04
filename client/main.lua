@@ -14,6 +14,13 @@ local pickupLocation, dropOffLocation = nil, nil
 -- Expose a shared Taxi table for modules if desired (keeps namespace compatibility)
 Taxi = Taxi or {}
 
+-- Guard against double-loading the client modules (e.g., if fxmanifest and require both load files)
+if Taxi.__modulesLoaded then
+	print('^3[qbx_taxijob]^7 Client modules already loaded, skipping duplicate initialization')
+	return
+end
+Taxi.__modulesLoaded = true
+
 -- Load core state first (globals used by other modules)
 local ok, err = pcall(function()
 	require 'client.state'

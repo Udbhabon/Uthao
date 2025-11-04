@@ -29,7 +29,8 @@ RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
 end)
 
 RegisterNetEvent('qb-taxijob:client:SetDuty', function(state)
-    setDuty(state)
+    -- Suppress local notifications when state is driven by server sync to avoid duplicate toasts
+    setDuty(state, true)
 end)
 
 RegisterNetEvent('qb-taxijob:client:ToggleDuty', function()

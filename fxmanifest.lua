@@ -12,7 +12,7 @@ shared_scripts {
 
 client_scripts {
 	'@qbx_core/modules/playerdata.lua',
- 	'client/main.lua',
+	 'client/main.lua',
 }
 
 server_script 'server/main.lua'
@@ -25,7 +25,9 @@ files {
 	'html/meter.js',
 	'config/client.lua',
 	'config/shared.lua',
-	'locales/*.json'
+	'locales/*.json',
+	-- Ensure client modules are downloadable for ox_lib require() without executing them twice
+	'client/*.lua'
 }
 
 provide 'qb-taxijob'
