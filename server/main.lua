@@ -239,25 +239,70 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
     local assign = activeAssignments[src]
     if not assign then return end
     local requester = assign.requester
+    local driverPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+    local passengerPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(requester) or nil
+    local amount = tonumber(fare) or 0
+    local driverName = 'Driver'
+    if driverPlayer and driverPlayer.PlayerData and driverPlayer.PlayerData.charinfo then
+        local ci = driverPlayer.PlayerData.charinfo
+        driverName = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (driverPlayer.PlayerData.name or 'Driver')
+    end
+
+    -- Persist fare to ride record first
+    local did = driverPlayer and driverPlayer.PlayerData and driverPlayer.PlayerData.citizenid or nil
+    local uid = passengerPlayer and passengerPlayer.PlayerData and passengerPlayer.PlayerData.citizenid or nil
+    local ride_id = (did and QbxTaxiDB and QbxTaxiDB.driverActiveRide[did]) or nil
+    if ride_id and QbxTaxiDB and QbxTaxiDB.data and QbxTaxiDB.data.rides and QbxTaxiDB.data.rides[ride_id] then
+        QbxTaxiDB.data.rides[ride_id].fare_amount = amount
+    end
+
+    -- Ask passenger to confirm payment
+    local confirmed = true
+    if passengerPlayer and amount > 0 then
+        confirmed = lib.callback.await('qbx_taxijob:client:ConfirmFare', passengerPlayer.PlayerData.source, amount, driverName)
+    end
+
+    -- Attempt payment if confirmed and valid players
+    local paid = false
+    if confirmed and driverPlayer and passengerPlayer and amount > 0 then
+        local pOK = false
+        if passengerPlayer.Functions and passengerPlayer.Functions.RemoveMoney then
+            pOK = passengerPlayer.Functions.RemoveMoney('bank', amount)
+        end
+        if pOK then
+            paid = true
+            if driverPlayer.Functions and driverPlayer.Functions.AddMoney then
+                driverPlayer.Functions.AddMoney('bank', amount)
+            end
+            if QbxTaxiDB and uid and did and ride_id then
+                QbxTaxiDB.addTransaction(uid, did, ride_id, amount, 'paid')
+            end
+        else
+            if QbxTaxiDB and uid and did and ride_id then
+                QbxTaxiDB.addTransaction(uid, did, ride_id, amount, 'failed')
+            end
+        end
+    end
+
+    -- Complete ride and clear blips/assignment
+    if QbxTaxiDB and driverPlayer then
+        QbxTaxiDB.completeRideByDriver(driverPlayer)
+    end
     activeAssignments[src] = nil
     assignedRequester[requester] = nil
     TriggerClientEvent('qb-taxijob:client:ClearRideBlips', requester)
     TriggerClientEvent('qb-taxijob:client:ClearRideBlips', src)
-    if QbxTaxiDB then
-        local driverPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
-        if driverPlayer then
-            -- set fare if we can before completing ride
-            local did = driverPlayer.PlayerData and driverPlayer.PlayerData.citizenid or nil
-            local ride_id = did and QbxTaxiDB.driverActiveRide[did] or nil
-            if ride_id and QbxTaxiDB.data and QbxTaxiDB.data.rides and QbxTaxiDB.data.rides[ride_id] then
-                QbxTaxiDB.data.rides[ride_id].fare_amount = tonumber(fare) or QbxTaxiDB.data.rides[ride_id].fare_amount
-            end
-            QbxTaxiDB.completeRideByDriver(driverPlayer)
+
+    -- Notify both sides
+    if amount > 0 then
+        TriggerClientEvent('chat:addMessage', requester, { args = { '^2[qbx_taxijob]', ('Your ride is complete. Fare: $%s'):format(tostring(amount)) } })
+        if paid then
+            TriggerClientEvent('chat:addMessage', requester, { args = { '^2[qbx_taxijob]', 'Payment processed.' } })
+            TriggerClientEvent('chat:addMessage', src, { args = { '^2[qbx_taxijob]', ('Ride completed. Fare received: $%s'):format(tostring(amount)) } })
+        else
+            TriggerClientEvent('chat:addMessage', requester, { args = { '^1[qbx_taxijob]', 'Payment failed or canceled.' } })
+            TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Passenger payment failed or canceled.' } })
         end
-    end
-    if fare then
-        TriggerClientEvent('chat:addMessage', requester, { args = { '^2[qbx_taxijob]', ('Your ride is complete. Fare: $%s'):format(tostring(fare)) } })
-        TriggerClientEvent('chat:addMessage', src, { args = { '^2[qbx_taxijob]', ('Ride completed. Fare saved: $%s'):format(tostring(fare)) } })
     else
         TriggerClientEvent('chat:addMessage', requester, { args = { '^2[qbx_taxijob]', 'Your ride is complete.' } })
         TriggerClientEvent('chat:addMessage', src, { args = { '^2[qbx_taxijob]', 'Ride completed.' } })

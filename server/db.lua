@@ -199,6 +199,27 @@ function DB.completeRideByDriver(driverPlayer)
     scheduleSave()
 end
 
+function DB.addTransaction(user_id, driver_id, ride_id, amount, payment_status)
+    if not DB.data.transactions then DB.data.transactions = {} end
+    local tx = {
+        transaction_id = tostring(os.time()) .. '-' .. tostring(math.random(1000, 9999)),
+        user_id = user_id,
+        driver_id = driver_id,
+        ride_id = ride_id,
+        amount = tonumber(amount) or 0,
+        payment_status = payment_status or 'unknown',
+        ts = os.time(),
+    }
+    local t = DB.data.transactions
+    if t[1] == nil and next(t) == nil then
+        -- normalize to array if empty table
+        DB.data.transactions = { tx }
+    else
+        table.insert(DB.data.transactions, tx)
+    end
+    scheduleSave()
+end
+
 -- Expose globally for use in server/main.lua without require
 QbxTaxiDB = DB
 DB.init()
