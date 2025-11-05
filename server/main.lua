@@ -46,6 +46,7 @@ AddEventHandler('QBCore:Server:SetDuty', function(source, onDuty)
                     dutyState[pid] = true
                     -- Tell the player's client to switch duty on for the taxi resource
                     TriggerClientEvent('qb-taxijob:client:SetDuty', pid, true)
+                    if QbxTaxiDB then QbxTaxiDB.updateDriverStatusFromPlayer(player, true) end
                     print(('[qbx_taxijob] [DEBUG] Duty ON: src=%d name=%s cid=%s job=%s'):format(pid, pname, cid, jobname))
                 else
                     print(('[qbx_taxijob] [DEBUG] Duty ON attempt rejected: src=%d name=%s cid=%s job=%s'):format(pid, pname, cid, jobname))
@@ -53,6 +54,7 @@ AddEventHandler('QBCore:Server:SetDuty', function(source, onDuty)
             else
                 dutyState[pid] = false
                 TriggerClientEvent('qb-taxijob:client:SetDuty', pid, false)
+                if QbxTaxiDB then QbxTaxiDB.updateDriverStatusFromPlayer(player, false) end
                 print(('[qbx_taxijob] [DEBUG] Duty OFF: src=%d name=%s cid=%s job=%s'):format(pid, pname, cid, jobname))
             end
         end
@@ -62,6 +64,8 @@ end)
 AddEventHandler('playerDropped', function(reason)
     local src = source
     dutyState[src] = nil
+    local p = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+    if p and QbxTaxiDB then QbxTaxiDB.updateDriverStatusFromPlayer(p, false) end
 end)
 
 
@@ -116,6 +120,11 @@ RegisterNetEvent('qb-taxijob:server:BookRide', function(message, coords)
         created = os.time()
     }
     pendingRequests[reqId] = req
+
+    if QbxTaxiDB then
+        local requesterPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+        if requesterPlayer then QbxTaxiDB.createRide(reqId, requesterPlayer, coords, message) end
+    end
 
     -- find on-duty drivers
     local drivers = {}
@@ -192,6 +201,8 @@ RegisterNetEvent('qb-taxijob:server:RespondRideRequest', function(reqId, accept)
             dname = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (driverPlayer.PlayerData.name or 'unknown')
         end
 
+        if QbxTaxiDB and driverPlayer then QbxTaxiDB.acceptRide(reqId, driverPlayer) end
+
     TriggerClientEvent('chat:addMessage', req.requester, { args = { '^2[qbx_taxijob]', ('%s accepted your ride.'):format(dname) } })
     TriggerClientEvent('qb-taxijob:client:RideAssigned', req.requester, src, dname, req.coords)
     -- instruct driver to show pickup blip and start location updates
@@ -219,6 +230,10 @@ RegisterNetEvent('qb-taxijob:server:DriverLocation', function(coords)
     local requester = assign.requester
     -- relay to requester so they can update the driver blip in realtime
     TriggerClientEvent('qb-taxijob:client:DriverLocationUpdate', requester, src, coords)
+    if QbxTaxiDB then
+        local driverPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+        if driverPlayer then QbxTaxiDB.markInProgressByDriver(driverPlayer) end
+    end
 end)
 
 
@@ -232,6 +247,10 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function()
     assignedRequester[requester] = nil
     TriggerClientEvent('qb-taxijob:client:ClearRideBlips', requester)
     TriggerClientEvent('qb-taxijob:client:ClearRideBlips', src)
+    if QbxTaxiDB then
+        local driverPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+        if driverPlayer then QbxTaxiDB.completeRideByDriver(driverPlayer) end
+    end
 end)
 
 -- Server wrapper to check if a plate belongs to a player vehicle
@@ -269,6 +288,10 @@ lib.callback.register('qb-taxi:server:spawnTaxi', function(source, model, coords
     local plate = 'TAXI' .. math.random(1000, 9999)
     SetVehicleNumberPlateText(veh, plate)
     TriggerClientEvent('vehiclekeys:client:SetOwner', source, plate)
+    if QbxTaxiDB then
+        local p = exports.qbx_core and exports.qbx_core:GetPlayer(source) or nil
+        if p then QbxTaxiDB.assignVehicleToDriver(p, plate, model) end
+    end
     return netId
 end)
 

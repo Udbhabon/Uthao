@@ -3,7 +3,7 @@ return {
     debugPoly = true,
     useBlips = true,
     -- Time (in seconds) before pickup and moving blips are automatically removed
-    blipDissepiartime = 30,
+    blipDissepiartime = 300,
     allowedVehicles = {
         { model = 'nightblade', label = locale('info.taxi_label_1') }
     },

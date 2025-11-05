@@ -1,0 +1,70 @@
+{
+  "transactions": [],
+  "vehicles": {
+    "TAXI5491": {
+      "vehicle_type": "sedan",
+      "vehicle_id": "TAXI5491",
+      "driver_id": "HU1M16DU",
+      "model": "nightblade",
+      "license_plate": "TAXI5491"
+    },
+    "TAXI1469": {
+      "vehicle_type": "sedan",
+      "vehicle_id": "TAXI1469",
+      "driver_id": "HU1M16DU",
+      "model": "nightblade",
+      "license_plate": "TAXI1469"
+    },
+    "TAXI7124": {
+      "vehicle_type": "sedan",
+      "vehicle_id": "TAXI7124",
+      "driver_id": "HU1M16DU",
+      "model": "nightblade",
+      "license_plate": "TAXI7124"
+    },
+    "TAXI8247": {
+      "vehicle_type": "sedan",
+      "vehicle_id": "TAXI8247",
+      "driver_id": "HU1M16DU",
+      "model": "nightblade",
+      "license_plate": "TAXI8247"
+    }
+  },
+  "ratings": [],
+  "users": { "K14C6R8X": { "user_id": "K14C6R8X", "name": "Kalachand Mia" } },
+  "rides": {
+    "1762369152-4619": {
+      "status": "in-progress",
+      "ride_id": "1762369152-4619",
+      "pickup_location": { "z": 29.34, "y": -721.53, "x": 332.43 },
+      "start_time": 1762369171,
+      "driver_id": "HU1M16DU",
+      "user_id": "K14C6R8X",
+      "note": ""
+    },
+    "1762369226-5633": {
+      "status": "in-progress",
+      "ride_id": "1762369226-5633",
+      "pickup_location": { "z": 29.34, "y": -721.51, "x": 332.44 },
+      "start_time": 1762369233,
+      "driver_id": "HU1M16DU",
+      "user_id": "K14C6R8X",
+      "note": ""
+    }
+  },
+  "drivers": {
+    "HU1M16DU": {
+      "location": {
+        "z": 65.03515625,
+        "y": -281.5516357421875,
+        "x": 925.4241943359375
+      },
+      "name": "Montu Mia",
+      "lastOn": 1762369232,
+      "vehicle_id": "TAXI8247",
+      "driver_id": "HU1M16DU",
+      "job": "taxi",
+      "availability_status": "busy"
+    }
+  }
+}
