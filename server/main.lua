@@ -230,15 +230,11 @@ RegisterNetEvent('qb-taxijob:server:DriverLocation', function(coords)
     local requester = assign.requester
     -- relay to requester so they can update the driver blip in realtime
     TriggerClientEvent('qb-taxijob:client:DriverLocationUpdate', requester, src, coords)
-    if QbxTaxiDB then
-        local driverPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
-        if driverPlayer then QbxTaxiDB.markInProgressByDriver(driverPlayer) end
-    end
 end)
 
 
 -- Optional: driver can signal ride complete to clear assignment and remove blips
-RegisterNetEvent('qb-taxijob:server:EndRide', function()
+RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
     local src = source
     local assign = activeAssignments[src]
     if not assign then return end
@@ -249,9 +245,144 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function()
     TriggerClientEvent('qb-taxijob:client:ClearRideBlips', src)
     if QbxTaxiDB then
         local driverPlayer = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
-        if driverPlayer then QbxTaxiDB.completeRideByDriver(driverPlayer) end
+        if driverPlayer then
+            -- set fare if we can before completing ride
+            local did = driverPlayer.PlayerData and driverPlayer.PlayerData.citizenid or nil
+            local ride_id = did and QbxTaxiDB.driverActiveRide[did] or nil
+            if ride_id and QbxTaxiDB.data and QbxTaxiDB.data.rides and QbxTaxiDB.data.rides[ride_id] then
+                QbxTaxiDB.data.rides[ride_id].fare_amount = tonumber(fare) or QbxTaxiDB.data.rides[ride_id].fare_amount
+            end
+            QbxTaxiDB.completeRideByDriver(driverPlayer)
+        end
+    end
+    if fare then
+        TriggerClientEvent('chat:addMessage', requester, { args = { '^2[qbx_taxijob]', ('Your ride is complete. Fare: $%s'):format(tostring(fare)) } })
+        TriggerClientEvent('chat:addMessage', src, { args = { '^2[qbx_taxijob]', ('Ride completed. Fare saved: $%s'):format(tostring(fare)) } })
+    else
+        TriggerClientEvent('chat:addMessage', requester, { args = { '^2[qbx_taxijob]', 'Your ride is complete.' } })
+        TriggerClientEvent('chat:addMessage', src, { args = { '^2[qbx_taxijob]', 'Ride completed.' } })
     end
 end)
+
+-- Driver command to end ride: asks client to submit fare and stop meter
+RegisterCommand('endride', function(src)
+    if src == 0 then
+        print('[qbx_taxijob] /endride cannot be run from console')
+        return
+    end
+    local assign = activeAssignments[src]
+    if not assign then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'No active ride to end.' } })
+        return
+    end
+    TriggerClientEvent('qbx_taxijob:client:EndRideCollectFare', src)
+end, false)
+
+-- Helper: find player source by citizenid
+local function findSourceByCitizenId(citizenid)
+    for _, id in ipairs(GetPlayers()) do
+        local p = exports.qbx_core and exports.qbx_core:GetPlayer(tonumber(id)) or nil
+        if p and p.PlayerData and p.PlayerData.citizenid == citizenid then
+            return tonumber(id)
+        end
+    end
+    return nil
+end
+
+-- Helper: allowed vehicle model check using client config if available
+local function isAllowedVehicleModel(modelHash)
+    local cfg = clientConfig
+    if not cfg or not cfg.allowedVehicles then return true end -- be permissive if config missing
+    for _, v in ipairs(cfg.allowedVehicles) do
+        if modelHash == joaat(v.model) then return true end
+    end
+    return false
+end
+
+-- Command: /startride (driver-only). Starts ride when passenger is seated with driver in an allowed vehicle.
+RegisterCommand('startride', function(src)
+    if src == 0 then
+        print('[qbx_taxijob] /startride cannot be run from console')
+        return
+    end
+    local driver = exports.qbx_core and exports.qbx_core:GetPlayer(src) or nil
+    if not driver then return end
+    if not driver.PlayerData or not driver.PlayerData.job or driver.PlayerData.job.name ~= 'taxi' then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Only taxi drivers can start rides.' } })
+        return
+    end
+    if not dutyState[src] then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'You must be on duty to start a ride.' } })
+        return
+    end
+
+    local ped = GetPlayerPed(src)
+    if not DoesEntityExist(ped) then return end
+    local veh = GetVehiclePedIsIn(ped, false)
+    if veh == 0 then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'You must be seated in a vehicle.' } })
+        return
+    end
+    if GetPedInVehicleSeat(veh, -1) ~= ped then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'You must be the driver.' } })
+        return
+    end
+    local model = GetEntityModel(veh)
+    if not isAllowedVehicleModel(model) then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'This is not an allowed taxi vehicle.' } })
+        return
+    end
+
+    if not QbxTaxiDB then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Ride DB unavailable.' } })
+        return
+    end
+
+    local did = driver.PlayerData.citizenid
+    local ride_id = QbxTaxiDB.driverActiveRide[did]
+    if not ride_id then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'No accepted ride found to start.' } })
+        return
+    end
+    local ride = QbxTaxiDB.data.rides[ride_id]
+    if not ride then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Ride not found.' } })
+        return
+    end
+    if ride.status ~= 'accepted' and ride.status ~= 'in-progress' then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Ride is not ready to start.' } })
+        return
+    end
+
+    local passengerSource = findSourceByCitizenId(ride.user_id)
+    if not passengerSource then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Passenger not online or not found.' } })
+        return
+    end
+    local pPed = GetPlayerPed(passengerSource)
+    if GetVehiclePedIsIn(pPed, false) ~= veh then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Passenger is not in your vehicle.' } })
+        return
+    end
+
+    -- Mark in-progress
+    QbxTaxiDB.markInProgressByDriver(driver)
+
+    -- Clear pickup/driver blips for both
+    TriggerClientEvent('qb-taxijob:client:ClearRideBlips', src)
+    TriggerClientEvent('qb-taxijob:client:ClearRideBlips', passengerSource)
+
+    -- Start the meter on driver screen
+    TriggerClientEvent('qbx_taxijob:client:StartRideMeter', src)
+
+    TriggerClientEvent('chat:addMessage', src, { args = { '^2[qbx_taxijob]', 'Ride started. Meter running.' } })
+    local dname = 'unknown'
+    if driver and driver.PlayerData and driver.PlayerData.charinfo then
+        local ci = driver.PlayerData.charinfo
+        dname = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (driver.PlayerData.name or 'unknown')
+    end
+    TriggerClientEvent('chat:addMessage', passengerSource, { args = { '^2[qbx_taxijob]', ('Your ride with %s has started.'):format(dname) } })
+end, false)
 
 -- Server wrapper to check if a plate belongs to a player vehicle
 RegisterNetEvent('qb-taxijob:server:CheckPlate', function(plate)
