@@ -42,6 +42,12 @@ function taxiGarage()
 end
 
 function setupGarageZone()
+    -- Prevent duplicate creation on resource restart or multiple init calls
+    if config.useTarget then
+        if taxiPed and DoesEntityExist(taxiPed) then return end
+    else
+        if garageZone then return end
+    end
     if config.useTarget then
         lib.requestModel(`a_m_m_indian_01`)
         taxiPed = CreatePed(3, `a_m_m_indian_01`, 894.93, -179.12, 74.7 - 1.0, 237.09, false, true)
@@ -97,6 +103,8 @@ function destroyGarageZone()
 end
 
 function setupTaxiParkingZone()
+    -- Prevent duplicate creation on resource restart or multiple init calls
+    if taxiParkingZone then return end
     taxiParkingZone = lib.zones.box({
         coords = vec3(config.locations.main.coords.x, config.locations.main.coords.y, config.locations.main.coords.z),
         size = vec3(4.0, 4.0, 4.0),

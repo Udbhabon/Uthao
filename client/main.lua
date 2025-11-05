@@ -29,6 +29,7 @@ local ok, err = pcall(function()
 	require 'client.garage'
 	require 'client.meter'
 	require 'client.bookings'
+	require 'client.billing'
 	require 'client.init'
 end)
 if not ok then

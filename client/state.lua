@@ -191,9 +191,7 @@ function setDuty(state, noNotify)
             return
         end
         onDuty = true
-        if type(setupGarageZone) == 'function' then pcall(setupGarageZone) end
-        if type(setupTaxiParkingZone) == 'function' then pcall(setupTaxiParkingZone) end
-        if type(setLocationsBlip) == 'function' then pcall(setLocationsBlip) end
+        -- Zones and blips are created during job-based init; don't re-create on duty toggle
         if not noNotify then exports.qbx_core:Notify('You are now on duty', 'success') end
     else
         if NpcData.Active or NpcData.NpcTaken then
@@ -206,9 +204,7 @@ function setDuty(state, noNotify)
         end
 
         onDuty = false
-        if type(destroyGarageZone) == 'function' then pcall(destroyGarageZone) end
-        if type(destroyTaxiParkingZone) == 'function' then pcall(destroyTaxiParkingZone) end
-        if type(removeLocationsBlip) == 'function' then pcall(removeLocationsBlip) end
+        -- Keep zones and blips; they are global access points and already gate actions by onDuty
         if not noNotify then exports.qbx_core:Notify('You are now off duty', 'inform') end
     end
 end

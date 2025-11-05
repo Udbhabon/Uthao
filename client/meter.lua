@@ -61,6 +61,32 @@ RegisterNUICallback('hideMouse', function(_, cb)
     cb('ok')
 end)
 
+-- Start ride meter safely (idempotent): ensure open, then enable
+RegisterNetEvent('qbx_taxijob:client:StartRideMeter', function()
+    if not cache or not cache.vehicle then return end
+    if not isDriver() then return end
+    if not whitelistedVehicle() then return end
+    if not meterIsOpen then
+        TriggerEvent('qb-taxi:client:toggleMeter')
+        Wait(100)
+    end
+    TriggerEvent('qb-taxi:client:enableMeter')
+end)
+
+-- Collect current fare, stop/reset meter, and send to server to end ride
+RegisterNetEvent('qbx_taxijob:client:EndRideCollectFare', function()
+    local fare = 0
+    if type(meterData) == 'table' and type(meterData.currentFare) == 'number' then
+        fare = meterData.currentFare
+    end
+    TriggerServerEvent('qb-taxijob:server:EndRide', fare)
+    if meterIsOpen then
+        TriggerEvent('qb-taxi:client:toggleMeter')
+        meterActive = false
+        SendNUIMessage({ action = 'resetMeter' })
+    end
+end)
+
 -- Threads
 CreateThread(function()
     while true do

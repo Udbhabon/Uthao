@@ -15,7 +15,10 @@ client_scripts {
 	 'client/main.lua',
 }
 
-server_script 'server/main.lua'
+server_scripts {
+	'server/db.lua',
+	'server/main.lua'
+}
 
 ui_page 'html/meter.html'
 
