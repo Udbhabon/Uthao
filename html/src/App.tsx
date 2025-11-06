@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { nuiSend } from './nui'
+import { Meter } from './ui/meter/Meter'
+import { DriverTablet } from './ui/tablet/DriverTablet'
 
 type MeterData = {
   defaultPrice: number
@@ -60,32 +62,34 @@ export default function App() {
     setMeterStarted(willEnable)
   }
 
+  const [tabletVisible, setTabletVisible] = useState(false)
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent<any>) => {
+      const data = e.data || {}
+      if (data.action === 'openDriverTablet') {
+        setTabletVisible(!!data.toggle)
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
   return (
-    <div className="container" style={{ display: visible ? 'block' : 'none' }}>
-      <div className="g5-meter" data-started={meterStarted ? 'true' : 'false'}>
-        <div className="panel">
-          <div className="box box1">
-            <button className="toggle-meter-btn" data-active={meterStarted ? 'true' : 'false'} onClick={meterToggle} aria-pressed={meterStarted}>
-              <span className="status-dot" />
-              <span className="status-text">{meterStarted ? 'Started' : 'Stopped'}</span>
-            </button>
-          </div>
-          <div className="box box2">
-            <span id="total-price">$ {currentFare.toFixed(2)}</span>
-            <span id="total-price-label">Total Fare</span>
-          </div>
-          <div className="bottom-row">
-            <div className="box box3">
-              <span id="total-price-per-100m">$ {Number(defaultPrice).toFixed(2)}</span>
-              <span id="total-price-per-100m-label">Price / mile</span>
-            </div>
-            <div className="box box4">
-              <span id="total-distance">{distance.toFixed(2)} mi</span>
-              <span id="total-distance-label">Total Distance</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <>
+      <Meter
+        visible={visible}
+        meterStarted={meterStarted}
+        currentFare={currentFare}
+        distance={distance}
+        defaultPrice={defaultPrice}
+        onToggle={meterToggle}
+      />
+      <DriverTablet 
+        visible={tabletVisible} 
+        rideInProgress={meterStarted}
+        onClose={() => setTabletVisible(false)} 
+      />
+    </>
   )
 }

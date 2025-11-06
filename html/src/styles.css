@@ -90,3 +90,36 @@ body { margin: 0; background: transparent !important; }
 
 /* When container is mounted (visible), allow pointer events inside */
 .container .g5-meter { pointer-events: auto; }
+
+/* Driver Tablet */
+.tablet-container {
+  position: fixed;
+  inset: 0;
+  display: none;
+  place-items: center;
+  background: rgba(0,0,0,0.15); /* subtle dim without blocking world */
+  pointer-events: auto;
+  z-index: 1000000;
+}
+.tablet-card {
+  width: 520px;
+  max-width: 85vw;
+  background: rgba(20,22,28,0.85);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.tablet-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.tablet-title { font-weight: 800; letter-spacing: .3px; }
+.tablet-close { background: transparent; color: var(--muted); border: none; font-size: 18px; cursor: pointer; }
+.tablet-close:hover { color: #fff; }
+.tablet-body { padding: 18px; display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+.tablet-action { height: 46px; border-radius: 12px; border: 1px solid var(--border); cursor: pointer; font-weight: 700; letter-spacing: .2px; }
+.tablet-action.start { background: rgba(34,197,94,0.12); color: var(--green); }
+.tablet-action.start:hover { background: rgba(34,197,94,0.18); }
+.tablet-action.end { background: rgba(239,68,68,0.12); color: var(--red); }
+.tablet-action.end:hover { background: rgba(239,68,68,0.18); }
