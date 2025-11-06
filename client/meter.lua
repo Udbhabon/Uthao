@@ -1,9 +1,46 @@
 -- Meter UI and related threads for qb_taxijob
 
+-- Acquire cache from ox_lib if available
+---@diagnostic disable: undefined-global
+if not cache and lib and lib.player then
+    cache = lib.player
+end
+-- locale is provided by ox_lib via global; guard so we don't break if missing
+locale = locale or function(key) return key end
+
+local nuiReady = false -- set true after initial handshake to avoid sending messages too early
+
+-- Handshake callback from NUI (React) to mark readiness
+RegisterNUICallback('ping', function(_, cb)
+    nuiReady = true
+    cb('ok')
+end)
+
 RegisterNetEvent('qb-taxi:client:toggleMeter', function()
     if cache.vehicle then
         if whitelistedVehicle() then
             if not meterIsOpen and isDriver() then
+                if not nuiReady then
+                    -- Defer opening until NUI is ready; small retry loop
+                    CreateThread(function()
+                        local attempts = 0
+                        while not nuiReady and attempts < 25 do -- ~2.5s max
+                            attempts = attempts + 1
+                            Wait(100)
+                        end
+                        if nuiReady and not meterIsOpen then
+                            SendNUIMessage({
+                                action = 'openMeter',
+                                toggle = true,
+                                meterData = config.meter
+                            })
+                            meterIsOpen = true
+                        elseif not nuiReady then
+                            exports.qbx_core:Notify('Meter UI not ready', 'error')
+                        end
+                    end)
+                    return
+                end
                 SendNUIMessage({
                     action = 'openMeter',
                     toggle = true,
@@ -11,6 +48,10 @@ RegisterNetEvent('qb-taxi:client:toggleMeter', function()
                 })
                 meterIsOpen = true
             else
+                if not nuiReady then
+                    exports.qbx_core:Notify('Meter UI not ready', 'error')
+                    return
+                end
                 SendNUIMessage({
                     action = 'openMeter',
                     toggle = false
@@ -27,6 +68,10 @@ end)
 
 RegisterNetEvent('qb-taxi:client:enableMeter', function()
     if meterIsOpen then
+        if not nuiReady then
+            exports.qbx_core:Notify('Meter UI not ready', 'error')
+            return
+        end
         SendNUIMessage({
             action = 'toggleMeter'
         })
@@ -66,6 +111,10 @@ RegisterNetEvent('qbx_taxijob:client:StartRideMeter', function()
     if not cache or not cache.vehicle then return end
     if not isDriver() then return end
     if not whitelistedVehicle() then return end
+    if not nuiReady then
+        exports.qbx_core:Notify('Meter UI not ready', 'error')
+        return
+    end
     if not meterIsOpen then
         TriggerEvent('qb-taxi:client:toggleMeter')
         Wait(100)
@@ -83,7 +132,9 @@ RegisterNetEvent('qbx_taxijob:client:EndRideCollectFare', function()
     if meterIsOpen then
         TriggerEvent('qb-taxi:client:toggleMeter')
         meterActive = false
-        SendNUIMessage({ action = 'resetMeter' })
+        if nuiReady then
+            SendNUIMessage({ action = 'resetMeter' })
+        end
     end
 end)
 
@@ -97,7 +148,7 @@ end)
 
 CreateThread(function()
     while true do
-        if not cache.vehicle then
+        if cache and not cache.vehicle then
             if meterIsOpen then
                 SendNUIMessage({
                     action = 'openMeter',

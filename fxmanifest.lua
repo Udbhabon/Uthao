@@ -20,12 +20,13 @@ server_scripts {
 	'server/main.lua'
 }
 
-ui_page 'html/meter.html'
+-- NUI page now built with React (Vite) into html/dist
+ui_page 'html/dist/index.html'
 
 files {
-	'html/meter.css',
-	'html/meter.html',
-	'html/meter.js',
+	-- React build output
+	'html/dist/index.html',
+	'html/dist/assets/*',
 	'config/client.lua',
 	'config/shared.lua',
 	'locales/*.json',
