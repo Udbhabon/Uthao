@@ -11,7 +11,7 @@ interface MeterProps {
 
 export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare, distance, defaultPrice, onToggle }) => {
   return (
-    <div className="container" style={{ display: visible ? 'block' : 'none' }}>
+    <div className="nui-meter-container" style={{ display: visible ? 'block' : 'none' }}>
       <div className="g5-meter" data-started={meterStarted ? 'true' : 'false'}>
         <div className="panel">
           <div className="box box1">

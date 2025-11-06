@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { nuiSend } from './nui'
 import { Meter } from './ui/meter/Meter'
 import { DriverTablet } from './ui/tablet/DriverTablet'
+import { Toaster } from '@/components/ui/toaster'
 
 type MeterData = {
   defaultPrice: number
@@ -90,6 +91,7 @@ export default function App() {
         rideInProgress={meterStarted}
         onClose={() => setTabletVisible(false)} 
       />
+      <Toaster />
     </>
   )
 }
