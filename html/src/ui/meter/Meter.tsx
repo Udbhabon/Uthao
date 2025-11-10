@@ -66,7 +66,7 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
                 <Navigation className="w-4 h-4 text-cyan-400" />
               </div>
               <div>
-                <h1 className="text-white font-bold text-sm leading-none">Taxi Meter</h1>
+                <h1 className="text-white font-bold text-sm leading-none">Uthao Meter</h1>
                 <p className="text-slate-300 text-[10px]">{meterStarted ? 'Active Trip' : 'Idle'}</p>
               </div>
             </div>

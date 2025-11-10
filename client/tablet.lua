@@ -27,6 +27,13 @@ RegisterNUICallback('tablet:close', function(_, cb)
     cb('ok')
 end)
 
+-- React side posts fetch("https://resource/closeDriverTablet") when closing; mirror behavior
+RegisterNUICallback('closeDriverTablet', function(_, cb)
+    SendNUIMessage({ action = 'openDriverTablet', toggle = false })
+    SetNuiFocus(false, false)
+    cb('ok')
+end)
+
 RegisterNUICallback('tablet:startRide', function(_, cb)
     -- Start ride uses our consolidated event
     TriggerEvent('qbx_taxijob:client:StartRideMeter')

@@ -76,6 +76,26 @@ export default function App() {
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
+  // Close tablet: notify client (release NUI focus) then hide locally
+  const closeTablet = async () => {
+    // Try both routes for compatibility with existing client handlers
+    try { await nuiSend('closeDriverTablet') } catch {}
+    try { await nuiSend('tablet:close') } catch {}
+    setTabletVisible(false)
+  }
+
+  // Allow ESC to close the tablet and release focus
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && tabletVisible) {
+        e.preventDefault()
+        closeTablet()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tabletVisible])
+
   return (
     <>
       <Meter
@@ -86,10 +106,10 @@ export default function App() {
         defaultPrice={defaultPrice}
         onToggle={meterToggle}
       />
-      <DriverTablet 
-        visible={tabletVisible} 
+      <DriverTablet
+        visible={tabletVisible}
         rideInProgress={meterStarted}
-        onClose={() => setTabletVisible(false)} 
+        onClose={closeTablet}
       />
       <Toaster />
     </>
