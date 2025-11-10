@@ -58,11 +58,11 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
 
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-[999999] w-[600px] max-w-[90vw]">
-      <div className="pointer-events-auto w-full bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-cyan-500/30 overflow-hidden">
+      <div className="pointer-events-auto w-full bg-gradient-to-br from-slate-800/95 to-slate-900/95 rounded-3xl shadow-2xl border border-cyan-500/30 overflow-hidden">
         <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-4 py-2.5 border-b border-cyan-500/20">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="bg-cyan-500/20 p-1.5 rounded-lg backdrop-blur-sm border border-cyan-500/30">
+              <div className="bg-cyan-500/20 p-1.5 rounded-lg border border-cyan-500/30">
                 <Navigation className="w-4 h-4 text-cyan-400" />
               </div>
               <div>
@@ -88,7 +88,7 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-xl p-2.5 backdrop-blur-sm">
+                <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-xl p-2.5">
                   <div className="flex items-center gap-1 mb-1">
                     <MapPin className="w-3.5 h-3.5 text-blue-400" />
                     <p className="text-blue-300 text-[10px] font-medium">Distance</p>
@@ -96,7 +96,7 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
                   <p className="text-white text-lg font-bold">{displayedDistance.toFixed(2)}</p>
                   <p className="text-blue-300 text-[10px]">km</p>
                 </div>
-                <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/20 rounded-xl p-2.5 backdrop-blur-sm">
+                <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/20 rounded-xl p-2.5">
                   <div className="flex items-center gap-1 mb-1">
                     <Clock className="w-3.5 h-3.5 text-green-400" />
                     <p className="text-green-300 text-[10px] font-medium">Time</p>
@@ -104,7 +104,7 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
                   <p className="text-white text-lg font-bold">{formatTime(duration)}</p>
                   <p className="text-green-300 text-[10px]">mm:ss</p>
                 </div>
-                <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/10 border border-orange-500/20 rounded-xl p-2.5 backdrop-blur-sm">
+                <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/10 border border-orange-500/20 rounded-xl p-2.5">
                   <div className="flex items-center gap-1 mb-1">
                     <Zap className="w-3.5 h-3.5 text-orange-400" />
                     <p className="text-orange-300 text-[10px] font-medium">Speed</p>
@@ -115,7 +115,7 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
               </div>
             </div>
             <div className="col-span-5 flex flex-col justify-center">
-              <div className="bg-slate-800/20 border border-slate-700/40 rounded-xl p-3 backdrop-blur-sm">
+              <div className="bg-slate-800/20 border border-slate-700/40 rounded-xl p-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <DollarSign className="w-3.5 h-3.5 text-cyan-400" />
                   <p className="text-cyan-300 text-[10px] font-semibold">Rate Info</p>
