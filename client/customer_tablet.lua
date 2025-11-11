@@ -99,22 +99,24 @@ RegisterNetEvent('qbx_taxijob:client:UpdateOnlineDrivers', function()
     end
 end)
 
--- Book ride callback
+-- Book ride callback - now fully functional
 RegisterNUICallback('customer:bookRide', function(data, cb)
-    local driverId = data.driverId
-    if not driverId then
-        cb('error')
-        return
-    end
+    local pickupLocation = data.pickupLocation or 'Current Location'
+    local message = data.message or ''
     
-    -- TODO: Implement ride booking logic with existing server system
-    -- TriggerServerEvent('qbx_taxijob:server:BookRideWithDriver', driverId)
+    -- Get player coordinates
+    local ped = PlayerPedId()
+    local pos = GetEntityCoords(ped)
+    local coords = {
+        x = tonumber(string.format('%.2f', pos.x)),
+        y = tonumber(string.format('%.2f', pos.y)),
+        z = tonumber(string.format('%.2f', pos.z))
+    }
     
-    lib.notify({
-        title = 'Taxi Job',
-        description = 'Ride booking system coming soon',
-        type = 'info'
-    })
+    -- Trigger the existing server booking system
+    TriggerServerEvent('qb-taxijob:server:BookRide', message, coords)
+    
+    exports.qbx_core:Notify('Ride requested. Waiting for drivers to respond...', 'inform')
     
     cb('ok')
 end)

@@ -31,6 +31,8 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   const [rating, setRating] = useState(0)
   const [autoPayEnabled, setAutoPayEnabled] = useState(true)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'debit' | 'cash'>('debit')
+  const [pickupLocation, setPickupLocation] = useState('Current Location')
+  const [bookingMessage, setBookingMessage] = useState('')
 
   if (!visible) return null
 
@@ -85,16 +87,48 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
             <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
             <input 
               type="text" 
-              placeholder="Enter your pickup location" 
+              placeholder="Enter your pickup location (optional)" 
               className="bg-transparent text-white text-sm flex-1 outline-none"
-              defaultValue="123 Main Street, Downtown"
+              value={pickupLocation}
+              onChange={(e) => setPickupLocation(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Optional Message */}
+        <div className="mb-4">
+          <label className="text-xs font-semibold text-gray-300 mb-2 block">Message to Driver (Optional)</label>
+          <div className="glass-input flex items-center gap-3 p-3">
+            <MessageCircle size={14} className="text-gray-400" />
+            <input 
+              type="text" 
+              placeholder="e.g., I have luggage, need wheelchair access..." 
+              className="bg-transparent text-white text-sm flex-1 outline-none"
+              value={bookingMessage}
+              onChange={(e) => setBookingMessage(e.target.value)}
             />
           </div>
         </div>
 
         {/* Book Ride Button */}
         <button 
-          onClick={() => onlineDrivers.length > 0 && setRideStatus('searching')}
+          onClick={async () => {
+            if (onlineDrivers.length > 0) {
+              try {
+                await fetch(`https://${(window as any).GetParentResourceName?.() || 'qbx_taxijob'}/customer:bookRide`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    pickupLocation: pickupLocation,
+                    message: bookingMessage
+                  })
+                })
+                setRideStatus('searching')
+              } catch (err) {
+                console.error('Failed to book ride:', err)
+              }
+            }
+          }}
           disabled={onlineDrivers.length === 0}
           className={`w-full py-3 rounded-xl font-bold text-base transition-all ${
             onlineDrivers.length > 0 
@@ -513,15 +547,38 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
               {rideStatus === 'idle' && activeSection === 'home' && <Home />}
               {rideStatus === 'searching' && (
                 <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
+                  <div className="text-center max-w-md mx-auto">
                     <div className="w-24 h-24 rounded-full border-4 border-cyan-500 border-t-transparent animate-spin mx-auto mb-4"></div>
                     <h2 className="text-xl font-bold text-white mb-2">Finding Your Ride...</h2>
-                    <p className="text-gray-400">Connecting you with nearby drivers</p>
+                    <p className="text-gray-400 mb-4">We've notified {onlineDrivers.length} nearby driver{onlineDrivers.length !== 1 ? 's' : ''}. Waiting for response...</p>
+                    
+                    {/* Show pickup details */}
+                    <div className="glass-card p-4 mb-6 text-left">
+                      <div className="flex items-center gap-2 mb-2">
+                        <MapPin size={16} className="text-green-500" />
+                        <span className="text-white text-sm font-semibold">Pickup Details</span>
+                      </div>
+                      <p className="text-gray-400 text-sm">{pickupLocation || 'Current Location'}</p>
+                      {bookingMessage && (
+                        <>
+                          <div className="flex items-center gap-2 mt-3 mb-2">
+                            <MessageCircle size={16} className="text-cyan-400" />
+                            <span className="text-white text-sm font-semibold">Your Message</span>
+                          </div>
+                          <p className="text-gray-400 text-sm">{bookingMessage}</p>
+                        </>
+                      )}
+                    </div>
+
                     <button 
-                      onClick={() => setRideStatus('matched')}
-                      className="mt-8 bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 px-8 rounded-2xl font-semibold"
+                      onClick={() => {
+                        setRideStatus('idle')
+                        setPickupLocation('Current Location')
+                        setBookingMessage('')
+                      }}
+                      className="bg-red-600/80 hover:bg-red-600 text-white py-3 px-8 rounded-xl font-semibold transition-all"
                     >
-                      Simulate Match
+                      Cancel Request
                     </button>
                   </div>
                 </div>
