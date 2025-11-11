@@ -492,3 +492,64 @@ RegisterNetEvent('qb-taxi:server:NpcPay', function(payment)
         DropPlayer(src, 'Attempting To Exploit')
     end
 end)
+
+-- Callback: Get list of online drivers for customer tablet
+lib.callback.register('qbx_taxijob:server:GetOnlineDrivers', function(source)
+    local drivers = {}
+    local customerCoords = GetEntityCoords(GetPlayerPed(source))
+    
+    -- Iterate through all online drivers
+    for driverSource, onDuty in pairs(dutyState) do
+        if onDuty and GetPlayerPing(driverSource) > 0 then
+            local player = exports.qbx_core:GetPlayer(driverSource)
+            if player and player.PlayerData then
+                local driverPed = GetPlayerPed(driverSource)
+                local driverCoords = GetEntityCoords(driverPed)
+                local distance = #(customerCoords - driverCoords)
+                
+                -- Get vehicle info
+                local vehicle = GetVehiclePedIsIn(driverPed, false)
+                local vehicleModel = 'Taxi'
+                if vehicle ~= 0 then
+                    local modelHash = GetEntityModel(vehicle)
+                    vehicleModel = GetDisplayNameFromVehicleModel(modelHash)
+                end
+                
+                -- Calculate distance in miles and ETA
+                local distanceMi = distance * 0.000621371 -- meters to miles
+                local etaMinutes = math.ceil(distance / 447) -- assuming ~30 mph average speed (447 m/min)
+                
+                -- Get driver name
+                local firstName = player.PlayerData.charinfo.firstname or 'John'
+                local lastName = player.PlayerData.charinfo.lastname or 'Doe'
+                
+                table.insert(drivers, {
+                    id = driverSource,
+                    name = firstName .. ' ' .. lastName,
+                    rating = 4.8, -- TODO: Get from database
+                    distance = string.format('%.1f mi', distanceMi),
+                    eta = string.format('%d min', etaMinutes),
+                    vehicle = vehicleModel,
+                    carType = 'economy', -- TODO: Determine from vehicle class
+                    coords = {x = driverCoords.x, y = driverCoords.y, z = driverCoords.z}
+                })
+            end
+        end
+    end
+    
+    return drivers
+end)
+
+-- Notify all customers with tablet open when driver status changes
+local function notifyCustomersDriverUpdate()
+    TriggerClientEvent('qbx_taxijob:client:UpdateOnlineDrivers', -1)
+end
+
+-- Hook into existing duty state changes to trigger customer updates
+AddEventHandler('QBCore:Server:SetDuty', function(source, onDuty)
+    -- Existing logic already handles dutyState[source] = onDuty/false
+    -- Now also notify customers
+    SetTimeout(100, function()
+        notifyCustomersDriverUpdate()
+    end)
+end)

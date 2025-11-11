@@ -66,6 +66,7 @@ export default function App() {
 
   const [tabletVisible, setTabletVisible] = useState(false)
   const [customerTabletVisible, setCustomerTabletVisible] = useState(false)
+  const [onlineDrivers, setOnlineDrivers] = useState<any[]>([])
 
   useEffect(() => {
     const onMessage = (e: MessageEvent<any>) => {
@@ -76,6 +77,9 @@ export default function App() {
           break
         case 'openCustomerTablet':
           setCustomerTabletVisible(!!data.toggle)
+          break
+        case 'updateOnlineDrivers':
+          setOnlineDrivers(data.drivers || [])
           break
       }
     }
@@ -130,6 +134,7 @@ export default function App() {
       <CustomerTablet
         visible={customerTabletVisible}
         onClose={closeCustomerTablet}
+        onlineDrivers={onlineDrivers}
       />
       <Toaster />
     </>

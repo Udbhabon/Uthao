@@ -1,13 +1,24 @@
 import React, { useState } from 'react'
 import { Star, Phone, MessageCircle, Shield, Settings, HelpCircle, Clock, Car, DollarSign, User, Users, ChevronRight, Bell, CreditCard, Tag, AlertTriangle, MapPin } from 'lucide-react'
 
+interface Driver {
+  id: number
+  name: string
+  rating: number
+  distance: string
+  eta: string
+  vehicle: string
+  carType: string
+  coords?: { x: number; y: number; z: number }
+}
+
 interface Props {
   visible: boolean
   onClose: () => void
+  onlineDrivers?: Driver[]
 }
 
-// Non-functional integration per request; contains local UI-only state
-export const CustomerTablet: React.FC<Props> = ({ visible, onClose }) => {
+export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers }) => {
   const [activeSection, setActiveSection] = useState<'home' | 'payment' | 'safety' | 'support' | 'settings'>('home')
   const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'matched' | 'in-progress' | 'payment' | 'completed'>('idle')
   const [rating, setRating] = useState(0)
@@ -22,14 +33,9 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose }) => {
     phone: '+1 (555) 123-4567',
     profilePic: 'https://avatar.iran.liara.run/public/girl'
   }
-  const onlineDrivers = [
-    { id: 1, name: 'Michael Chen', rating: 4.9, distance: '0.5 mi', eta: '3 min', vehicle: 'Toyota Camry', carType: 'economy' },
-    { id: 2, name: 'Emma Davis', rating: 4.8, distance: '0.8 mi', eta: '5 min', vehicle: 'Honda Accord', carType: 'economy' },
-    { id: 3, name: 'James Wilson', rating: 5.0, distance: '1.2 mi', eta: '7 min', vehicle: 'Tesla Model 3', carType: 'premium' },
-    { id: 4, name: 'Lisa Anderson', rating: 4.7, distance: '1.5 mi', eta: '8 min', vehicle: 'Toyota Prius', carType: 'economy' },
-    { id: 5, name: 'Robert Martinez', rating: 4.9, distance: '1.8 mi', eta: '9 min', vehicle: 'BMW 5 Series', carType: 'premium' },
-    { id: 6, name: 'Jennifer Lee', rating: 4.6, distance: '2.0 mi', eta: '10 min', vehicle: 'Hyundai Sonata', carType: 'economy' }
-  ]
+  
+  // Use live drivers from server, no fallback to mock data
+  const onlineDrivers = liveDrivers || []
   const currentDriver = {
     name: 'Michael Chen', rating: 4.9, trips: 1243, profilePic: 'https://avatar.iran.liara.run/public/boy',
     vehicle: 'Toyota Camry 2022', licensePlate: 'ABC 1234', eta: '3 min'
@@ -99,26 +105,36 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose }) => {
         </div>
         
         <div className="drivers-scrollable-container mt-3">
-          <div className="grid grid-cols-2 gap-4">
-            {onlineDrivers.map(driver => (
-              <div key={driver.id} className="glass-card p-4 hover:border-cyan-500/50 transition-all cursor-pointer">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h4 className="text-white text-sm font-semibold">{driver.name}</h4>
-                    <p className="text-xs text-gray-400">{driver.vehicle}</p>
+          {onlineDrivers.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4">
+              {onlineDrivers.map(driver => (
+                <div key={driver.id} className="glass-card p-4 hover:border-cyan-500/50 transition-all cursor-pointer">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h4 className="text-white text-sm font-semibold">{driver.name}</h4>
+                      <p className="text-xs text-gray-400">{driver.vehicle}</p>
+                    </div>
+                    <div className="flex items-center gap-1 glass-badge text-xs">
+                      <Star size={12} fill="#fbbf24" stroke="#fbbf24" />
+                      <span>{driver.rating}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 glass-badge text-xs">
-                    <Star size={12} fill="#fbbf24" stroke="#fbbf24" />
-                    <span>{driver.rating}</span>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-400">{driver.distance} away</span>
+                    <span className="text-cyan-400 font-semibold">{driver.eta} ETA</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">{driver.distance} away</span>
-                  <span className="text-cyan-400 font-semibold">{driver.eta} ETA</span>
-                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="glass-card p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-gray-500/20 flex items-center justify-center mx-auto mb-4">
+                <Car size={32} className="text-gray-400" />
               </div>
-            ))}
-          </div>
+              <h4 className="text-white text-base font-semibold mb-2">No Drivers Available</h4>
+              <p className="text-gray-400 text-sm">There are no taxi drivers online at the moment. Please check back later.</p>
+            </div>
+          )}
         </div>
       </div>
 
