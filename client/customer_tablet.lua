@@ -104,11 +104,23 @@ RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driver
     if customerTabletOpen then
         SendNUIMessage({
             action = 'rideAccepted',
-            driverName = driverName,
-            driverSrc = driverSrc
+            driverName = tostring(driverName or 'Driver'),
+            driverSrc = tonumber(driverSrc) or 0
         })
     end
     exports.qbx_core:Notify(('Driver %s is on the way to your location'):format(driverName or 'a driver'), 'success')
+    
+    -- Handle existing blip system (from bookings.lua)
+    CurrentAssignedDriver = driverSrc
+    if coords then
+        if RequesterPickupBlip then RemoveBlip(RequesterPickupBlip); RequesterPickupBlip = nil end
+        RequesterPickupBlip = AddBlipForCoord(coords.x, coords.y, coords.z)
+        SetBlipSprite(RequesterPickupBlip, 1)
+        SetBlipColour(RequesterPickupBlip, 3)
+        BeginTextCommandSetBlipName('STRING')
+        AddTextComponentSubstringPlayerName('Pickup Location')
+        EndTextCommandSetBlipName(RequesterPickupBlip)
+    end
 end)
 
 -- Handle all drivers busy
@@ -120,24 +132,6 @@ RegisterNetEvent('qbx_taxijob:client:AllDriversBusy', function()
         })
     end
     exports.qbx_core:Notify('All drivers are busy right now. Please try again later.', 'error')
-end)
-
--- Handle ride rejection/timeout
-AddEventHandler('chat:addMessage', function(author, color, message)
-    if not customerTabletOpen then return end
-    
-    -- Check if this is a ride request failure message
-    if type(message) == 'table' and message.args then
-        local text = table.concat(message.args, ' ')
-        if text:find('No drivers accepted your ride request') or 
-           text:find('no longer available') or
-           text:find('Ride already taken') then
-            SendNUIMessage({
-                action = 'rideRejected',
-                reason = 'all_busy'
-            })
-        end
-    end
 end)
 
 -- Book ride callback - now fully functional

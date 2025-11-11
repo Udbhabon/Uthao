@@ -49,9 +49,13 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
     if (rideStatusUpdate && onRideStatusHandled) {
       if (rideStatusUpdate.status === 'accepted') {
         setRideStatus('matched')
+        // Ensure we only set primitive values, not objects
+        const driverName = typeof rideStatusUpdate.driver === 'string' ? rideStatusUpdate.driver : 'Driver'
+        const driverSrc = typeof rideStatusUpdate.driverSrc === 'number' ? rideStatusUpdate.driverSrc : 0
+        
         setAssignedDriver({
-          name: rideStatusUpdate.driver || 'Driver',
-          src: rideStatusUpdate.driverSrc || 0
+          name: driverName,
+          src: driverSrc
         })
       } else if (rideStatusUpdate.status === 'rejected') {
         // Show rejection screen instead of going back to idle

@@ -153,6 +153,7 @@ RegisterNetEvent('qb-taxijob:server:BookRide', function(message, coords)
     SetTimeout(25000, function()
         local r = pendingRequests[reqId]
         if r and not r.assigned then
+            TriggerClientEvent('qbx_taxijob:client:AllDriversBusy', r.requester)
             TriggerClientEvent('chat:addMessage', r.requester, { args = { '^1[qbx_taxijob]', 'No drivers accepted your ride request.' } })
             pendingRequests[reqId] = nil
         end
