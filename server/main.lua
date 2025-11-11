@@ -97,6 +97,11 @@ RegisterNetEvent('qb-taxijob:server:PlayerToggledDuty', function(state, coords)
         dutyState[src] = false
         print(('[qbx_taxijob] [PLAYER TOGGLE] OFF -> src=%d name=%s cid=%s job=%s coords=[%s]'):format(src, pname, cid, jobname, coordsStr))
     end
+    
+    -- Notify all customers with tablet open that driver list changed
+    SetTimeout(100, function()
+        TriggerClientEvent('qbx_taxijob:client:UpdateOnlineDrivers', -1)
+    end)
 end)
 
 
@@ -523,6 +528,12 @@ lib.callback.register('qbx_taxijob:server:GetOnlineDrivers', function(source)
     local drivers = {}
     local customerCoords = GetEntityCoords(GetPlayerPed(source))
     
+    print(('[qbx_taxijob] [DEBUG] GetOnlineDrivers called by source=%d'):format(source))
+    print(('[qbx_taxijob] [DEBUG] dutyState table contents:'))
+    for src, duty in pairs(dutyState) do
+        print(('  src=%d duty=%s'):format(src, tostring(duty)))
+    end
+    
     -- Iterate through all online drivers
     for driverSource, onDuty in pairs(dutyState) do
         if onDuty and GetPlayerPing(driverSource) > 0 then
@@ -532,12 +543,12 @@ lib.callback.register('qbx_taxijob:server:GetOnlineDrivers', function(source)
                 local driverCoords = GetEntityCoords(driverPed)
                 local distance = #(customerCoords - driverCoords)
                 
-                -- Get vehicle info
+                -- Get vehicle info (server-side doesn't have GetDisplayNameFromVehicleModel)
                 local vehicle = GetVehiclePedIsIn(driverPed, false)
                 local vehicleModel = 'Taxi'
                 if vehicle ~= 0 then
-                    local modelHash = GetEntityModel(vehicle)
-                    vehicleModel = GetDisplayNameFromVehicleModel(modelHash)
+                    -- Just use generic "Taxi" for now - model names require client-side native
+                    vehicleModel = 'Taxi Vehicle'
                 end
                 
                 -- Calculate distance in miles and ETA
@@ -558,23 +569,11 @@ lib.callback.register('qbx_taxijob:server:GetOnlineDrivers', function(source)
                     carType = 'economy', -- TODO: Determine from vehicle class
                     coords = {x = driverCoords.x, y = driverCoords.y, z = driverCoords.z}
                 })
+                print(('[qbx_taxijob] [DEBUG] Added driver: %s (src=%d) distance=%s eta=%s'):format(firstName .. ' ' .. lastName, driverSource, string.format('%.1f mi', distanceMi), string.format('%d min', etaMinutes)))
             end
         end
     end
     
+    print(('[qbx_taxijob] [DEBUG] Returning %d drivers to customer'):format(#drivers))
     return drivers
-end)
-
--- Notify all customers with tablet open when driver status changes
-local function notifyCustomersDriverUpdate()
-    TriggerClientEvent('qbx_taxijob:client:UpdateOnlineDrivers', -1)
-end
-
--- Hook into existing duty state changes to trigger customer updates
-AddEventHandler('QBCore:Server:SetDuty', function(source, onDuty)
-    -- Existing logic already handles dutyState[source] = onDuty/false
-    -- Now also notify customers
-    SetTimeout(100, function()
-        notifyCustomersDriverUpdate()
-    end)
 end)

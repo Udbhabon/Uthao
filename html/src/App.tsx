@@ -85,6 +85,8 @@ export default function App() {
           }
           break
         case 'updateOnlineDrivers':
+          console.log('[qbx_taxijob] [REACT] Received updateOnlineDrivers:', data.drivers)
+          console.log('[qbx_taxijob] [REACT] Driver count:', data.drivers?.length || 0)
           setOnlineDrivers(data.drivers || [])
           break
         case 'rideAccepted':

@@ -18,11 +18,14 @@ function getDeliveryLocation()
     NpcData.LastDeliver = NpcData.CurrentDeliver
     if not config.useTarget then -- added checks to disable distance checking if polyzone option is used
         CreateThread(function()
+            local targetCoords = vec3(sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].x, sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].y, sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].z)
             while true do
                 local pos = GetEntityCoords(cache.ped)
-                local dist = #(pos - vec3(sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].x, sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].y, sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].z))
+                local dist = #(pos - targetCoords)
+                
                 if dist < 20 then
-                    DrawMarker(2, sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].x, sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].y, sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.3, 0.3, 255, 255, 255, 255, false, false, 0, true, nil, nil, false)
+                    Wait(1) -- Only wait 1ms when drawing markers (needs frame-perfect rendering)
+                    DrawMarker(2, targetCoords.x, targetCoords.y, targetCoords.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.3, 0.3, 255, 255, 255, 255, false, false, 0, true, nil, nil, false)
                     if dist < 5 then
                         qbx.drawText3d({text = locale('info.drop_off_npc'), coords = sharedConfig.npcLocations.deliverLocations[NpcData.CurrentDeliver].xyz})
                         if IsControlJustPressed(0, 38) then
@@ -69,8 +72,9 @@ function getDeliveryLocation()
                             break
                         end
                     end
+                else
+                    Wait(500) -- Far away - check less frequently
                 end
-                Wait(0)
             end
         end)
     end
@@ -79,6 +83,7 @@ end
 function callNpcPoly()
     CreateThread(function()
         while not NpcData.NpcTaken do
+            Wait(100) -- Check key press every 100ms instead of every frame
             if isInsidePickupZone then
                 if IsControlJustPressed(0, 38) then
                     lib.hideTextUI()
@@ -116,9 +121,9 @@ function callNpcPoly()
                     createNpcDelieveryLocation()
                     zone:remove()
                     lib.hideTextUI()
+                    break
                 end
             end
-            Wait(0)
         end
     end)
 end
@@ -174,6 +179,7 @@ end
 function dropNpcPoly()
     CreateThread(function()
         while NpcData.NpcTaken do
+            Wait(100) -- Check key press every 100ms instead of every frame
             if isInsideDropZone then
                         if IsControlJustPressed(0, 38) then
                     lib.hideTextUI()
@@ -222,7 +228,6 @@ function dropNpcPoly()
                     break
                 end
             end
-            Wait(0)
         end
     end)
 end
@@ -268,13 +273,14 @@ RegisterNetEvent('qb-taxi:client:DoTaxiNpc', function()
 
             if not config.useTarget then
                 CreateThread(function()
+                    local targetCoords = vec3(sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].x, sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].y, sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].z)
                     while not NpcData.NpcTaken do
-
                         local pos = GetEntityCoords(cache.ped)
-                        local dist = #(pos - vec3(sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].x, sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].y, sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].z))
+                        local dist = #(pos - targetCoords)
 
                         if dist < 20 then
-                            DrawMarker(2, sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].x, sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].y, sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.3, 0.3, 255, 255, 255, 255, false, false, 0, true, nil, nil, false)
+                            Wait(1) -- Only wait 1ms when drawing markers (needs frame-perfect rendering)
+                            DrawMarker(2, targetCoords.x, targetCoords.y, targetCoords.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.3, 0.3, 255, 255, 255, 255, false, false, 0, true, nil, nil, false)
 
                             if dist < 5 then
                                 qbx.drawText3d({text = locale('info.call_npc'), coords = sharedConfig.npcLocations.takeLocations[NpcData.CurrentNpc].xyz})
@@ -311,11 +317,12 @@ RegisterNetEvent('qb-taxi:client:DoTaxiNpc', function()
                                     getDeliveryLocation()
                                     dropOffLocation = config.pzLocations.dropLocations[NpcData.CurrentDeliver].coord.xyz
                                     NpcData.NpcTaken = true
+                                    break
                                 end
                             end
+                        else
+                            Wait(500) -- Far away - check less frequently
                         end
-
-                        Wait(0)
                     end
                 end)
             end

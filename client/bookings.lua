@@ -85,14 +85,13 @@ RegisterNetEvent('qb-taxijob:client:ShowPickupBlip', function(pickupCoords)
 
     if DriverUpdateThread then return end
     DriverUpdateThread = CreateThread(function()
-        while true do
-            Wait(1000)
+        while DriverPickupBlip and DoesBlipExist(DriverPickupBlip) do
+            Wait(2000) -- Increased from 1000ms to 2000ms - location updates don't need to be every second
             local ped = PlayerPedId()
             if not ped then break end
             local pos = GetEntityCoords(ped)
             local coords = { x = tonumber(string.format('%.2f', pos.x)), y = tonumber(string.format('%.2f', pos.y)), z = tonumber(string.format('%.2f', pos.z)) }
             TriggerServerEvent('qb-taxijob:server:DriverLocation', coords)
-            if not DriverPickupBlip then break end
         end
         DriverUpdateThread = nil
     end)

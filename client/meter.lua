@@ -47,6 +47,7 @@ RegisterNetEvent('qb-taxi:client:toggleMeter', function()
                     meterData = config.meter
                 })
                 meterIsOpen = true
+                startVehicleCheckThread() -- Start vehicle check only when meter opens
             else
                 if not nuiReady then
                     exports.qbx_core:Notify('Meter UI not ready', 'error')
@@ -95,7 +96,11 @@ end)
 -- NUI Callbacks
 RegisterNUICallback('enableMeter', function(data, cb)
     meterActive = data.enabled
-    if not meterActive then resetMeter() end
+    if not meterActive then 
+        resetMeter()
+    else
+        startFareThread() -- Start fare calculation only when meter is active
+    end
     lastLocation = GetEntityCoords(cache.ped)
     cb('ok')
 end)
@@ -138,25 +143,36 @@ RegisterNetEvent('qbx_taxijob:client:EndRideCollectFare', function()
     end
 end)
 
--- Threads
-CreateThread(function()
-    while true do
-        Wait(2000)
-        calculateFareAmount()
-    end
-end)
+-- Threads - OPTIMIZED: Only run when meter is active
+local fareThread = nil
+local vehicleCheckThread = nil
 
-CreateThread(function()
-    while true do
-        if cache and not cache.vehicle then
-            if meterIsOpen then
+local function startFareThread()
+    if fareThread then return end
+    fareThread = CreateThread(function()
+        while meterActive do
+            Wait(2000)
+            calculateFareAmount()
+        end
+        fareThread = nil
+    end)
+end
+
+local function startVehicleCheckThread()
+    if vehicleCheckThread then return end
+    vehicleCheckThread = CreateThread(function()
+        while meterIsOpen do
+            if cache and not cache.vehicle then
                 SendNUIMessage({
                     action = 'openMeter',
                     toggle = false
                 })
                 meterIsOpen = false
+                meterActive = false
+                break
             end
+            Wait(500) -- Increased from 200ms to 500ms - less critical check
         end
-        Wait(200)
-    end
-end)
+        vehicleCheckThread = nil
+    end)
+end

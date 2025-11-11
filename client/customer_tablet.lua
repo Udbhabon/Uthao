@@ -2,13 +2,35 @@
 
 local nuiReadyCustomer = false
 local customerTabletOpen = false
-local driverUpdateThread = nil
 
 -- Optional ready handshake (React can post this later if needed)
 RegisterNUICallback('customerTablet:ready', function(_, cb)
     nuiReadyCustomer = true
     cb('ok')
 end)
+
+-- Fetch and send driver data to NUI (DEFINED FIRST before being called)
+local function updateOnlineDrivers()
+    if not customerTabletOpen then return end
+    
+    print('[qbx_taxijob] [CLIENT] Requesting online drivers from server...')
+    local drivers = lib.callback.await('qbx_taxijob:server:GetOnlineDrivers', false)
+    
+    if drivers then
+        print(('[qbx_taxijob] [CLIENT] Received %d drivers from server'):format(#drivers))
+        for i, driver in ipairs(drivers) do
+            print(('  [%d] %s - %s away, %s ETA'):format(i, driver.name, driver.distance, driver.eta))
+        end
+        
+        SendNUIMessage({
+            action = 'updateOnlineDrivers',
+            drivers = drivers
+        })
+        print('[qbx_taxijob] [CLIENT] Sent driver data to NUI')
+    else
+        print('[qbx_taxijob] [CLIENT] No driver data received from server')
+    end
+end
 
 -- Command to open customer tablet for any player (no job restriction)
 RegisterCommand('customertablet', function()
@@ -30,8 +52,9 @@ RegisterCommand('customertablet', function()
     })
     SetNuiFocus(true, true)
     
-    -- Start polling for driver updates
-    startDriverUpdates()
+    -- Fetch drivers ONLY when tablet opens (not continuous polling)
+    print('[qbx_taxijob] [CLIENT] Customer tablet opened, fetching drivers once...')
+    updateOnlineDrivers()
 end, false)
 
 -- Close handlers from React (new + legacy naming for flexibility)
@@ -39,12 +62,6 @@ RegisterNUICallback('customerTablet:close', function(_, cb)
     customerTabletOpen = false
     SendNUIMessage({ action = 'openCustomerTablet', toggle = false })
     SetNuiFocus(false, false)
-    
-    -- Stop polling
-    if driverUpdateThread then
-        driverUpdateThread = nil
-    end
-    
     cb('ok')
 end)
 
@@ -52,50 +69,17 @@ RegisterNUICallback('closeCustomerTablet', function(_, cb)
     customerTabletOpen = false
     SendNUIMessage({ action = 'openCustomerTablet', toggle = false })
     SetNuiFocus(false, false)
-    
-    -- Stop polling
-    if driverUpdateThread then
-        driverUpdateThread = nil
-    end
-    
     cb('ok')
 end)
 
--- Fetch and send driver data to NUI
-local function updateOnlineDrivers()
-    if not customerTabletOpen then return end
-    
-    local drivers = lib.callback.await('qbx_taxijob:server:GetOnlineDrivers', false)
-    if drivers then
-        SendNUIMessage({
-            action = 'updateOnlineDrivers',
-            drivers = drivers
-        })
-    end
-end
-
--- Start periodic updates
-function startDriverUpdates()
-    -- Initial update
-    updateOnlineDrivers()
-    
-    -- Start polling thread (every 5 seconds)
-    if driverUpdateThread then return end
-    
-    driverUpdateThread = true
-    CreateThread(function()
-        while customerTabletOpen and driverUpdateThread do
-            Wait(5000) -- 5 second polling interval
-            updateOnlineDrivers()
-        end
-        driverUpdateThread = nil
-    end)
-end
-
--- Server can trigger immediate update when driver status changes
+-- Server can trigger immediate update when driver status changes (efficient - only on duty toggle)
 RegisterNetEvent('qbx_taxijob:client:UpdateOnlineDrivers', function()
+    print('[qbx_taxijob] [CLIENT] Received UpdateOnlineDrivers event from server (driver duty changed)')
     if customerTabletOpen then
+        print('[qbx_taxijob] [CLIENT] Tablet is open, auto-updating driver list...')
         updateOnlineDrivers()
+    else
+        print('[qbx_taxijob] [CLIENT] Tablet is closed, ignoring update')
     end
 end)
 
