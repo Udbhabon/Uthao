@@ -26,3 +26,31 @@ node_modules/
 *.tmp
 .DS_Store
 Thumbs.db
+data/db.json
+
+# --- NUI (Vite + React) UI workspace ---
+# Keep built UI in repo so the resource runs without building.
+!html/dist/
+!html/dist/**
+
+# Ignore UI dev artifacts and caches
+html/node_modules/
+html/.vite/
+html/.cache/
+html/.eslintcache
+html/npm-debug.log*
+html/yarn-error.log*
+html/pnpm-debug.log*
+html/.DS_Store
+
+# Do NOT ignore shadcn/tailwind configs or sources
+!html/components.json
+!html/tailwind.config.*
+!html/postcss.config.*
+!html/vite.config.*
+!html/tsconfig.json
+!html/src/**
+.mcp.json
+data/db.json
+html/dist/*
+/html/dist

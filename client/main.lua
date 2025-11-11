@@ -28,6 +28,8 @@ local ok, err = pcall(function()
 	require 'client.npc'
 	require 'client.garage'
 	require 'client.meter'
+	require 'client.tablet'
+	require 'client.customer_tablet'
 	require 'client.bookings'
 	require 'client.billing'
 	require 'client.init'
