@@ -69,6 +69,8 @@ export default function App() {
   const [onlineDrivers, setOnlineDrivers] = useState<any[]>([])
   const [customerProfile, setCustomerProfile] = useState<any>(null)
 
+  const [rideStatus, setRideStatus] = useState<any>(null)
+
   useEffect(() => {
     const onMessage = (e: MessageEvent<any>) => {
       const data = e.data || {}
@@ -84,6 +86,12 @@ export default function App() {
           break
         case 'updateOnlineDrivers':
           setOnlineDrivers(data.drivers || [])
+          break
+        case 'rideAccepted':
+          setRideStatus({ status: 'accepted', driver: data.driverName, driverSrc: data.driverSrc })
+          break
+        case 'rideRejected':
+          setRideStatus({ status: 'rejected', reason: data.reason })
           break
       }
     }
@@ -140,6 +148,8 @@ export default function App() {
         onClose={closeCustomerTablet}
         onlineDrivers={onlineDrivers}
         customerProfile={customerProfile}
+        rideStatusUpdate={rideStatus}
+        onRideStatusHandled={() => setRideStatus(null)}
       />
       <Toaster />
     </>

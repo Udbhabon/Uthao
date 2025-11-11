@@ -18,14 +18,23 @@ interface CustomerProfile {
   citizenid: string
 }
 
+interface RideStatusUpdate {
+  status: 'accepted' | 'rejected'
+  driver?: string
+  driverSrc?: number
+  reason?: string
+}
+
 interface Props {
   visible: boolean
   onClose: () => void
   onlineDrivers?: Driver[]
   customerProfile?: CustomerProfile | null
+  rideStatusUpdate?: RideStatusUpdate | null
+  onRideStatusHandled?: () => void
 }
 
-export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers, customerProfile: liveProfile }) => {
+export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers, customerProfile: liveProfile, rideStatusUpdate, onRideStatusHandled }) => {
   const [activeSection, setActiveSection] = useState<'home' | 'payment' | 'safety' | 'support' | 'settings'>('home')
   const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'matched' | 'in-progress' | 'payment' | 'completed'>('idle')
   const [rating, setRating] = useState(0)
@@ -33,6 +42,24 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'debit' | 'cash'>('debit')
   const [pickupLocation, setPickupLocation] = useState('Current Location')
   const [bookingMessage, setBookingMessage] = useState('')
+  const [assignedDriver, setAssignedDriver] = useState<{name: string, src: number} | null>(null)
+
+  // Handle ride status updates from server
+  React.useEffect(() => {
+    if (rideStatusUpdate && onRideStatusHandled) {
+      if (rideStatusUpdate.status === 'accepted') {
+        setRideStatus('matched')
+        setAssignedDriver({
+          name: rideStatusUpdate.driver || 'Driver',
+          src: rideStatusUpdate.driverSrc || 0
+        })
+      } else if (rideStatusUpdate.status === 'rejected') {
+        // Show rejection screen instead of going back to idle
+        setRideStatus('rejected' as any)
+      }
+      onRideStatusHandled()
+    }
+  }, [rideStatusUpdate, onRideStatusHandled])
 
   if (!visible) return null
 
@@ -45,9 +72,16 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   
   // Use live drivers from server, no fallback to mock data
   const onlineDrivers = liveDrivers || []
+  
+  // Use assigned driver or fallback to mock data for simulation
   const currentDriver = {
-    name: 'Michael Chen', rating: 4.9, trips: 1243, profilePic: 'https://avatar.iran.liara.run/public/boy',
-    vehicle: 'Toyota Camry 2022', licensePlate: 'ABC 1234', eta: '3 min'
+    name: assignedDriver?.name || 'Michael Chen',
+    rating: 4.9,
+    trips: 1243,
+    profilePic: 'https://avatar.iran.liara.run/public/boy',
+    vehicle: 'Toyota Camry 2022',
+    licensePlate: 'ABC 1234',
+    eta: '3 min'
   }
   const fareBreakdown = { baseFare: 8.50, distance: 12.30, surge: 2.50, discount: -3.00, total: 20.30 }
 
@@ -200,6 +234,30 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
           <HelpCircle size={24} className="text-blue-400 mb-2" />
           <div className="text-white text-sm font-semibold">Support</div>
           <div className="text-xs text-gray-400 mt-1">Help center</div>
+        </button>
+      </div>
+    </div>
+  )
+
+  const AllDriversBusy = () => (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center max-w-md mx-auto">
+        <div className="w-24 h-24 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle size={48} className="text-red-400" />
+        </div>
+        <h2 className="text-xl font-bold text-white mb-2">All Drivers Are Busy</h2>
+        <p className="text-gray-400 mb-6">Unfortunately, no drivers are available at the moment. Please try again later.</p>
+        
+        <button 
+          onClick={() => {
+            setRideStatus('idle')
+            setActiveSection('home')
+            setPickupLocation('Current Location')
+            setBookingMessage('')
+          }}
+          className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 px-8 rounded-xl font-semibold transition-all hover:shadow-lg hover:shadow-cyan-500/50"
+        >
+          Back to Home
         </button>
       </div>
     </div>
@@ -545,6 +603,7 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
             {/* Scrollable Content */}
             <div className="tablet-content p-6 space-y-6">
               {rideStatus === 'idle' && activeSection === 'home' && <Home />}
+              {rideStatus === 'rejected' && <AllDriversBusy />}
               {rideStatus === 'searching' && (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center max-w-md mx-auto">

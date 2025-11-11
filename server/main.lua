@@ -170,6 +170,12 @@ RegisterNetEvent('qb-taxijob:server:RespondRideRequest', function(reqId, accept)
         return
     end
 
+    -- Track driver responses
+    if not req.responses then
+        req.responses = {}
+    end
+    req.responses[src] = accept
+
     if accept then
         if req.assigned then
             -- someone already accepted
@@ -215,8 +221,26 @@ RegisterNetEvent('qb-taxijob:server:RespondRideRequest', function(reqId, accept)
             end
         end
     else
-        -- declined; simple feedback
-        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'You declined the ride request.' } })
+        -- declined; check if all drivers have responded
+        local totalDrivers = 0
+        local totalResponses = 0
+        
+        for driverSrc, onDuty in pairs(dutyState) do
+            if onDuty then
+                totalDrivers = totalDrivers + 1
+                if req.responses[driverSrc] ~= nil then
+                    totalResponses = totalResponses + 1
+                end
+            end
+        end
+        
+        -- If all drivers have declined, notify customer
+        if totalResponses >= totalDrivers and not req.assigned then
+            TriggerClientEvent('qbx_taxijob:client:AllDriversBusy', req.requester)
+            pendingRequests[reqId] = nil
+        else
+            TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'You declined the ride request.' } })
+        end
     end
 end)
 

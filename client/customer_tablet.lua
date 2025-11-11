@@ -99,6 +99,47 @@ RegisterNetEvent('qbx_taxijob:client:UpdateOnlineDrivers', function()
     end
 end)
 
+-- Handle ride assignment (driver accepted)
+RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driverSrc, driverName, coords)
+    if customerTabletOpen then
+        SendNUIMessage({
+            action = 'rideAccepted',
+            driverName = driverName,
+            driverSrc = driverSrc
+        })
+    end
+    exports.qbx_core:Notify(('Driver %s is on the way to your location'):format(driverName or 'a driver'), 'success')
+end)
+
+-- Handle all drivers busy
+RegisterNetEvent('qbx_taxijob:client:AllDriversBusy', function()
+    if customerTabletOpen then
+        SendNUIMessage({
+            action = 'rideRejected',
+            reason = 'all_busy'
+        })
+    end
+    exports.qbx_core:Notify('All drivers are busy right now. Please try again later.', 'error')
+end)
+
+-- Handle ride rejection/timeout
+AddEventHandler('chat:addMessage', function(author, color, message)
+    if not customerTabletOpen then return end
+    
+    -- Check if this is a ride request failure message
+    if type(message) == 'table' and message.args then
+        local text = table.concat(message.args, ' ')
+        if text:find('No drivers accepted your ride request') or 
+           text:find('no longer available') or
+           text:find('Ride already taken') then
+            SendNUIMessage({
+                action = 'rideRejected',
+                reason = 'all_busy'
+            })
+        end
+    end
+end)
+
 -- Book ride callback - now fully functional
 RegisterNUICallback('customer:bookRide', function(data, cb)
     local pickupLocation = data.pickupLocation or 'Current Location'
