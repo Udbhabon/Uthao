@@ -12,8 +12,22 @@ end)
 
 -- Command to open customer tablet for any player (no job restriction)
 RegisterCommand('customertablet', function()
+    local playerData = exports.qbx_core:GetPlayerData()
+    if not playerData then return end
+    
+    -- Get customer profile data
+    local customerProfile = {
+        name = (playerData.charinfo.firstname or 'John') .. ' ' .. (playerData.charinfo.lastname or 'Doe'),
+        phone = playerData.charinfo.phone or 'N/A',
+        citizenid = playerData.citizenid
+    }
+    
     customerTabletOpen = true
-    SendNUIMessage({ action = 'openCustomerTablet', toggle = true })
+    SendNUIMessage({ 
+        action = 'openCustomerTablet', 
+        toggle = true,
+        customerProfile = customerProfile
+    })
     SetNuiFocus(true, true)
     
     -- Start polling for driver updates

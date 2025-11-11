@@ -12,13 +12,20 @@ interface Driver {
   coords?: { x: number; y: number; z: number }
 }
 
+interface CustomerProfile {
+  name: string
+  phone: string
+  citizenid: string
+}
+
 interface Props {
   visible: boolean
   onClose: () => void
   onlineDrivers?: Driver[]
+  customerProfile?: CustomerProfile | null
 }
 
-export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers }) => {
+export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers, customerProfile: liveProfile }) => {
   const [activeSection, setActiveSection] = useState<'home' | 'payment' | 'safety' | 'support' | 'settings'>('home')
   const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'matched' | 'in-progress' | 'payment' | 'completed'>('idle')
   const [rating, setRating] = useState(0)
@@ -27,11 +34,11 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
 
   if (!visible) return null
 
-  // Sample data from provided design
+  // Use live customer profile from QBX Core, fallback to default
   const passengerProfile = {
-    name: 'Sarah Johnson',
-    phone: '+1 (555) 123-4567',
-    profilePic: 'https://avatar.iran.liara.run/public/girl'
+    name: liveProfile?.name || 'Guest',
+    phone: liveProfile?.phone || 'N/A',
+    profilePic: 'https://avatar.iran.liara.run/public/boy'
   }
   
   // Use live drivers from server, no fallback to mock data

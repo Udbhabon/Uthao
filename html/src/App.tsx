@@ -67,6 +67,7 @@ export default function App() {
   const [tabletVisible, setTabletVisible] = useState(false)
   const [customerTabletVisible, setCustomerTabletVisible] = useState(false)
   const [onlineDrivers, setOnlineDrivers] = useState<any[]>([])
+  const [customerProfile, setCustomerProfile] = useState<any>(null)
 
   useEffect(() => {
     const onMessage = (e: MessageEvent<any>) => {
@@ -77,6 +78,9 @@ export default function App() {
           break
         case 'openCustomerTablet':
           setCustomerTabletVisible(!!data.toggle)
+          if (data.toggle && data.customerProfile) {
+            setCustomerProfile(data.customerProfile)
+          }
           break
         case 'updateOnlineDrivers':
           setOnlineDrivers(data.drivers || [])
@@ -135,6 +139,7 @@ export default function App() {
         visible={customerTabletVisible}
         onClose={closeCustomerTablet}
         onlineDrivers={onlineDrivers}
+        customerProfile={customerProfile}
       />
       <Toaster />
     </>

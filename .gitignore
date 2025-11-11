@@ -52,3 +52,4 @@ html/.DS_Store
 !html/src/**
 .mcp.json
 data/db.json
+html/dist/*
