@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { nuiSend } from './nui'
 import { Meter } from './ui/meter/Meter'
 import { DriverTablet } from './ui/tablet/DriverTablet'
+import { CustomerTablet } from './ui/tablet/CustomerTablet'
 import { Toaster } from '@/components/ui/toaster'
 
 type MeterData = {
@@ -64,12 +65,18 @@ export default function App() {
   }
 
   const [tabletVisible, setTabletVisible] = useState(false)
+  const [customerTabletVisible, setCustomerTabletVisible] = useState(false)
 
   useEffect(() => {
     const onMessage = (e: MessageEvent<any>) => {
       const data = e.data || {}
-      if (data.action === 'openDriverTablet') {
-        setTabletVisible(!!data.toggle)
+      switch (data.action) {
+        case 'openDriverTablet':
+          setTabletVisible(!!data.toggle)
+          break
+        case 'openCustomerTablet':
+          setCustomerTabletVisible(!!data.toggle)
+          break
       }
     }
     window.addEventListener('message', onMessage)
@@ -78,23 +85,32 @@ export default function App() {
 
   // Close tablet: notify client (release NUI focus) then hide locally
   const closeTablet = async () => {
-    // Try both routes for compatibility with existing client handlers
     try { await nuiSend('closeDriverTablet') } catch {}
     try { await nuiSend('tablet:close') } catch {}
     setTabletVisible(false)
+  }
+  const closeCustomerTablet = async () => {
+    try { await nuiSend('closeCustomerTablet') } catch {}
+    try { await nuiSend('customerTablet:close') } catch {}
+    setCustomerTabletVisible(false)
   }
 
   // Allow ESC to close the tablet and release focus
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && tabletVisible) {
-        e.preventDefault()
-        closeTablet()
+      if (e.key === 'Escape') {
+        if (tabletVisible) {
+          e.preventDefault()
+          closeTablet()
+        } else if (customerTabletVisible) {
+          e.preventDefault()
+          closeCustomerTablet()
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [tabletVisible])
+  }, [tabletVisible, customerTabletVisible])
 
   return (
     <>
@@ -110,6 +126,10 @@ export default function App() {
         visible={tabletVisible}
         rideInProgress={meterStarted}
         onClose={closeTablet}
+      />
+      <CustomerTablet
+        visible={customerTabletVisible}
+        onClose={closeCustomerTablet}
       />
       <Toaster />
     </>

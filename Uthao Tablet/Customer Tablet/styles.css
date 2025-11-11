@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+/* Keep Tailwind's preflight spacing; only set box-sizing */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+.tablet-frame {
+  width: 100%;
+  max-width: 960px; /* fit inside mockup shell */
+  min-height: 560px; /* Allow auto growth */
+  height: 100%; /* Fill inner mockup screen to enable child scrolling */
+  background: rgba(17, 24, 39, 0.95);
+  backdrop-filter: blur(20px);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 32px;
+  padding: 24px; /* Balanced for smaller shell */
+  font-size: 15px;
+  line-height: 1.55; /* More vertical rhythm */
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.65),
+              inset 0 0 50px rgba(6, 182, 212, 0.12);
+  position: relative;
+  overflow: visible; /* Don't clip internal shadows */
+  display: flex;
+  flex-direction: column;
+}
+
+.close-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 1000;
+}
+
+.close-button:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.5);
+  transform: scale(1.1);
+}
+
+.tablet-content {
+  width: 100%;
+  flex: 1 1 auto;     /* occupy remaining height inside flex column */
+  min-height: 0;      /* allow shrinking so overflow can scroll */
+  overflow-y: auto;
+  padding-right: 12px;
+}
+
+.tablet-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tablet-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.tablet-content::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.6);
+  border-radius: 10px;
+}
+
+.tablet-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.8);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+.glass-button {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  transition: all 0.3s ease;
+}
+
+.glass-input:focus-within {
+  border-color: rgba(6, 182, 212, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.glass-badge {
+  background: rgba(6, 182, 212, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #22d3ee;
+}
+
+.drivers-scrollable-container {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 8px;
+  margin-top: 10px;
+}
+
+.drivers-scrollable-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.drivers-scrollable-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.drivers-scrollable-container::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.6);
+  border-radius: 10px;
+}
+
+.drivers-scrollable-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.8);
+}
