@@ -94,10 +94,15 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
 
         {/* Book Ride Button */}
         <button 
-          onClick={() => setRideStatus('searching')}
-          className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 rounded-xl font-bold text-base hover:shadow-lg hover:shadow-cyan-500/50 transition-all"
+          onClick={() => onlineDrivers.length > 0 && setRideStatus('searching')}
+          disabled={onlineDrivers.length === 0}
+          className={`w-full py-3 rounded-xl font-bold text-base transition-all ${
+            onlineDrivers.length > 0 
+              ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:shadow-lg hover:shadow-cyan-500/50 cursor-pointer' 
+              : 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+          }`}
         >
-          Book Ride Now
+          {onlineDrivers.length > 0 ? 'Book Ride Now' : 'No Drivers Available'}
         </button>
       </div>
 
