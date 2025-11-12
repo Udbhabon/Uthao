@@ -31,13 +31,25 @@ export default function App() {
             const meterData: MeterData = data.meterData || { defaultPrice: 0 }
             setDefaultPrice(Number(meterData.defaultPrice || 0))
             setVisible(true)
+            // If meterStarted is explicitly provided, set it
+            if (data.meterStarted !== undefined) {
+              setMeterStarted(!!data.meterStarted)
+            }
           } else {
             setVisible(false)
+            setMeterStarted(false) // Reset when closing
           }
           break
         }
         case 'toggleMeter': {
           meterToggle()
+          break
+        }
+        case 'setMeterRunning': {
+          // Directly set meter to running state (for StartRideMeter)
+          const running = !!data.running
+          setMeterStarted(running)
+          console.log('[qbx_taxijob] [Meter] Set running state:', running)
           break
         }
         case 'updateMeter': {
@@ -68,6 +80,7 @@ export default function App() {
   const [customerTabletVisible, setCustomerTabletVisible] = useState(false)
   const [onlineDrivers, setOnlineDrivers] = useState<any[]>([])
   const [customerProfile, setCustomerProfile] = useState<any>(null)
+  const [acceptedRide, setAcceptedRide] = useState<any>(null)
 
   const [rideStatus, setRideStatus] = useState<any>(null)
 
@@ -77,6 +90,11 @@ export default function App() {
       switch (data.action) {
         case 'openDriverTablet':
           setTabletVisible(!!data.toggle)
+          // Set accepted ride data from server (can be null if no ride)
+          if (data.toggle && data.acceptedRide !== undefined) {
+            setAcceptedRide(data.acceptedRide)
+            console.log('[qbx_taxijob] [REACT] Accepted ride data:', data.acceptedRide)
+          }
           break
         case 'openCustomerTablet':
           setCustomerTabletVisible(!!data.toggle)
@@ -94,6 +112,10 @@ export default function App() {
           break
         case 'rideRejected':
           setRideStatus({ status: 'rejected', reason: data.reason })
+          break
+        case 'rideCompleted':
+          console.log('[qbx_taxijob] [REACT] Ride completed:', data)
+          setRideStatus({ status: 'completed', fare: data.fare, paid: data.paid, driverName: data.driverName })
           break
       }
     }
@@ -144,6 +166,7 @@ export default function App() {
         visible={tabletVisible}
         rideInProgress={meterStarted}
         onClose={closeTablet}
+        acceptedRide={acceptedRide}
       />
       <CustomerTablet
         visible={customerTabletVisible}
@@ -151,7 +174,13 @@ export default function App() {
         onlineDrivers={onlineDrivers}
         customerProfile={customerProfile}
         rideStatusUpdate={rideStatus}
-        onRideStatusHandled={() => setRideStatus(null)}
+        onRideStatusHandled={() => {
+          // Only clear rideStatus if it's NOT a completed status
+          // Keep completed status so it persists when tablet reopens
+          if (rideStatus && rideStatus.status !== 'completed') {
+            setRideStatus(null)
+          }
+        }}
       />
       <Toaster />
     </>

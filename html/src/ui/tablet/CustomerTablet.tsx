@@ -19,10 +19,15 @@ interface CustomerProfile {
 }
 
 interface RideStatusUpdate {
-  status: 'accepted' | 'rejected'
+  status: 'accepted' | 'rejected' | 'completed'
   driver?: string
   driverSrc?: number
   reason?: string
+  fare?: number
+  paid?: boolean
+  driverName?: string
+  driverCid?: string
+  rideId?: string
 }
 
 interface Props {
@@ -43,6 +48,14 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   const [pickupLocation, setPickupLocation] = useState('Current Location')
   const [bookingMessage, setBookingMessage] = useState('')
   const [assignedDriver, setAssignedDriver] = useState<{name: string, src: number} | null>(null)
+  const [rideFare, setRideFare] = useState<number>(0)
+  const [rideDriverName, setRideDriverName] = useState<string>('Driver')
+  const [rideDriverCid, setRideDriverCid] = useState<string>('')
+  const [rideId, setRideId] = useState<string>('')
+  const [paymentProcessing, setPaymentProcessing] = useState(false)
+  
+  // Track if we've handled a completed status to avoid re-processing
+  const handledCompletionRef = React.useRef<boolean>(false)
 
   // Handle ride status updates from server
   React.useEffect(() => {
@@ -57,13 +70,33 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
           name: driverName,
           src: driverSrc
         })
+        onRideStatusHandled() // Clear non-completed statuses
       } else if (rideStatusUpdate.status === 'rejected') {
         // Show rejection screen instead of going back to idle
         setRideStatus('rejected' as any)
+        onRideStatusHandled() // Clear non-completed statuses
+      } else if (rideStatusUpdate.status === 'completed' && !handledCompletionRef.current) {
+        // Driver ended the ride, show payment/completion screen
+        console.log('[qbx_taxijob] [CustomerTablet] Ride completed, transitioning to payment screen')
+        console.log('[qbx_taxijob] [CustomerTablet] Fare data:', rideStatusUpdate.fare, 'Driver:', rideStatusUpdate.driverName)
+        console.log('[qbx_taxijob] [CustomerTablet] Driver CID:', rideStatusUpdate.driverCid, 'Ride ID:', rideStatusUpdate.rideId)
+        console.log('[qbx_taxijob] [CustomerTablet] Current rideStatus:', rideStatus)
+        
+        // Store fare, driver info, and ride data for payment/review screens
+        setRideFare(rideStatusUpdate.fare || 0)
+        setRideDriverName(rideStatusUpdate.driverName || 'Driver')
+        setRideDriverCid(rideStatusUpdate.driverCid || '')
+        setRideId(rideStatusUpdate.rideId || '')
+        setRideStatus('payment')
+        
+        // Mark as handled so we don't process it again if tablet reopens
+        handledCompletionRef.current = true
+        
+        // Don't call onRideStatusHandled() for completed status - keep it persisted
+        console.log('[qbx_taxijob] [CustomerTablet] Completion handled, status will persist')
       }
-      onRideStatusHandled()
     }
-  }, [rideStatusUpdate, onRideStatusHandled])
+  }, [rideStatusUpdate, onRideStatusHandled, rideStatus])
 
   if (!visible) return null
 
@@ -328,81 +361,275 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
     </div>
   )
 
-  const PaymentSelection = () => (
-    <div className="space-y-4">
-      <div className="glass-card p-5 text-center">
-        <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
-          <Car size={48} className="text-green-400" />
-        </div>
-        <h2 className="text-xl font-bold text-white mb-2">Ride Completed!</h2>
-        <p className="text-gray-400 mb-8">Please select your payment method</p>
+  const handlePayment = async (confirmed: boolean) => {
+    if (paymentProcessing) return
+    
+    setPaymentProcessing(true)
+    console.log(`[qbx_taxijob] [CustomerTablet] Sending payment confirmation - Method: ${selectedPaymentMethod}, Confirmed: ${confirmed}`)
+    
+    try {
+      await fetch(`https://${(window as any).GetParentResourceName?.() || 'qbx_taxijob'}/customer:confirmPayment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: selectedPaymentMethod,
+          confirmed: confirmed
+        })
+      })
+      
+      if (confirmed) {
+        // On successful payment, move to rating screen
+        setTimeout(() => {
+          setRideStatus('completed')
+          setPaymentProcessing(false)
+        }, 1000)
+      } else {
+        // On cancel, go back to home and reset completion tracking
+        setTimeout(() => {
+          setRideStatus('idle')
+          setActiveSection('home')
+          setPaymentProcessing(false)
+          handledCompletionRef.current = false // Reset for next ride
+        }, 500)
+      }
+    } catch (err) {
+      console.error('Failed to process payment:', err)
+      setPaymentProcessing(false)
+    }
+  }
 
-        <div className="glass-card p-4 mb-4">
-          <h3 className="text-xl font-bold text-white mb-4">Fare Summary</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between text-gray-300"><span>Base Fare</span><span>${fareBreakdown.baseFare.toFixed(2)}</span></div>
-            <div className="flex justify-between text-gray-300"><span>Distance</span><span>${fareBreakdown.distance.toFixed(2)}</span></div>
-            <div className="flex justify-between text-gray-300"><span>Surge Pricing</span><span className="text-orange-400">+${fareBreakdown.surge.toFixed(2)}</span></div>
-            <div className="flex justify-between text-green-400"><span>Discount</span><span>${fareBreakdown.discount.toFixed(2)}</span></div>
-            <div className="h-px bg-white/10" />
-            <div className="flex justify-between text-white text-xl font-bold"><span>Total</span><span>${fareBreakdown.total.toFixed(2)}</span></div>
+  const PaymentSelection = () => {
+    // Calculate fare breakdown (80% base, 20% service fee)
+    const baseFare = rideFare * 0.8
+    const serviceFee = rideFare * 0.2
+    
+    return (
+      <div className="space-y-4">
+        <div className="glass-card p-5 text-center">
+          <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+            <Car size={48} className="text-green-400" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Ride Completed!</h2>
+          <p className="text-gray-400 mb-2">Driver: {rideDriverName}</p>
+          <p className="text-gray-400 mb-8">Please select your payment method</p>
+
+          <div className="glass-card p-4 mb-4">
+            <h3 className="text-xl font-bold text-white mb-4">Fare Summary</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between text-gray-300"><span>Base Fare (80%)</span><span>${baseFare.toFixed(2)}</span></div>
+              <div className="flex justify-between text-gray-300"><span>Service Fee (20%)</span><span>${serviceFee.toFixed(2)}</span></div>
+              <div className="h-px bg-white/10" />
+              <div className="flex justify-between text-white text-xl font-bold"><span>Total</span><span>${rideFare.toFixed(2)}</span></div>
+            </div>
+          </div>
+
+          <div className="space-y-4 mb-4">
+            <h3 className="text-lg font-bold text-white mb-4">Select Payment Method</h3>
+            <button 
+              onClick={() => setSelectedPaymentMethod('debit')} 
+              disabled={paymentProcessing}
+              className={`w-full glass-card p-4 transition-all ${selectedPaymentMethod === 'debit' ? 'border-2 border-cyan-500 bg-cyan-500/20' : 'border border-white/10 hover:border-cyan-500/50'} ${paymentProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center"><CreditCard size={24} /></div>
+                  <div className="text-left"><div className="text-white font-semibold">Debit Card</div><div className="text-sm text-gray-400">Bank Account</div></div>
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 ${selectedPaymentMethod === 'debit' ? 'border-cyan-500 bg-cyan-500' : 'border-white/20'}`} />
+              </div>
+            </button>
+            <button 
+              onClick={() => setSelectedPaymentMethod('cash')} 
+              disabled={paymentProcessing}
+              className={`w-full glass-card p-4 transition-all ${selectedPaymentMethod === 'cash' ? 'border-2 border-cyan-500 bg-cyan-500/20' : 'border border-white/10 hover:border-cyan-500/50'} ${paymentProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-600 to-emerald-600 flex items-center justify-center"><DollarSign size={24} /></div>
+                  <div className="text-left"><div className="text-white font-semibold">Cash Payment</div><div className="text-sm text-gray-400">Pay with cash</div></div>
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 ${selectedPaymentMethod === 'cash' ? 'border-cyan-500 bg-cyan-500' : 'border-white/20'}`} />
+              </div>
+            </button>
+          </div>
+
+          <div className="flex gap-3">
+            <button 
+              onClick={() => handlePayment(false)} 
+              disabled={paymentProcessing}
+              className="flex-1 bg-red-600/80 hover:bg-red-600 text-white py-3 rounded-xl font-bold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={() => handlePayment(true)} 
+              disabled={paymentProcessing}
+              className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 rounded-xl font-bold text-base hover:shadow-lg hover:shadow-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {paymentProcessing ? 'Processing...' : `Pay $${rideFare.toFixed(2)}`}
+            </button>
           </div>
         </div>
-
-        <div className="space-y-4 mb-4">
-          <h3 className="text-lg font-bold text-white mb-4">Select Payment Method</h3>
-          <button onClick={() => setSelectedPaymentMethod('debit')} className={`w-full glass-card p-4 transition-all ${selectedPaymentMethod === 'debit' ? 'border-2 border-cyan-500 bg-cyan-500/20' : 'border border-white/10 hover:border-cyan-500/50'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center"><CreditCard size={24} /></div>
-                <div className="text-left"><div className="text-white font-semibold">Debit Card</div><div className="text-sm text-gray-400">•••• •••• •••• 8888</div></div>
-              </div>
-              <div className={`w-5 h-5 rounded-full border-2 ${selectedPaymentMethod === 'debit' ? 'border-cyan-500 bg-cyan-500' : 'border-white/20'}`} />
-            </div>
-          </button>
-          <button onClick={() => setSelectedPaymentMethod('cash')} className={`w-full glass-card p-4 transition-all ${selectedPaymentMethod === 'cash' ? 'border-2 border-cyan-500 bg-cyan-500/20' : 'border border-white/10 hover:border-cyan-500/50'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-600 to-emerald-600 flex items-center justify-center"><DollarSign size={24} /></div>
-                <div className="text-left"><div className="text-white font-semibold">Cash Payment</div><div className="text-sm text-gray-400">Pay to driver</div></div>
-              </div>
-              <div className={`w-5 h-5 rounded-full border-2 ${selectedPaymentMethod === 'cash' ? 'border-cyan-500 bg-cyan-500' : 'border-white/20'}`} />
-            </div>
-          </button>
-        </div>
-
-        <button onClick={() => setRideStatus('completed')} className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 rounded-xl font-bold text-base hover:shadow-lg hover:shadow-cyan-500/50 transition-all">Proceed to Rate Driver</button>
       </div>
-    </div>
-  )
+    )
+  }
 
-  const Rating = () => (
-    <div className="space-y-4">
-      <div className="glass-card p-5 text-center">
-        <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4"><Car size={48} className="text-green-400" /></div>
-        <h2 className="text-xl font-bold text-white mb-2">Ride Completed!</h2>
-        <p className="text-gray-400 mb-4">Thank you for riding with us</p>
-        <div className="glass-card p-4 mb-4">
-          <img src={currentDriver.profilePic} alt="Driver" className="w-20 h-20 rounded-full border-4 border-cyan-500/30 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-white mb-2">{currentDriver.name}</h3>
-          <p className="text-gray-400 mb-4">How was your ride?</p>
-          <div className="flex justify-center gap-3 mb-4">
-            {[1,2,3,4,5].map(star => (
-              <button key={star} onClick={() => setRating(star)} className="transition-transform hover:scale-110">
-                <Star size={40} fill={star <= rating ? '#fbbf24' : 'none'} stroke={star <= rating ? '#fbbf24' : '#6b7280'} className="transition-colors" />
-              </button>
-            ))}
+  const Rating = () => {
+    const [reviewComment, setReviewComment] = useState('')
+    const [submittingReview, setSubmittingReview] = useState(false)
+
+    const handleSubmitReview = async () => {
+      // Validate rating
+      if (rating === 0) {
+        console.log('[qbx_taxijob] [CustomerTablet] Cannot submit review without rating')
+        // Reset state and close tablet even without rating
+        setRideStatus('idle')
+        setRating(0)
+        setReviewComment('')
+        setActiveSection('home')
+        setPickupLocation('Current Location')
+        setBookingMessage('')
+        setAssignedDriver(null)
+        setRideFare(0)
+        setRideDriverName('Driver')
+        setRideDriverCid('')
+        setRideId('')
+        setPaymentProcessing(false)
+        setSelectedPaymentMethod('debit')
+        handledCompletionRef.current = false
+        console.log('[qbx_taxijob] [CustomerTablet] Closing tablet without review submission')
+        onClose()
+        return
+      }
+
+      // Validate driver and ride IDs
+      if (!rideDriverCid || !rideId) {
+        console.log('[qbx_taxijob] [CustomerTablet] Missing driver or ride ID for review submission')
+        console.log('[qbx_taxijob] [CustomerTablet] Driver CID:', rideDriverCid, 'Ride ID:', rideId)
+        // Still allow finishing the ride even if review can't be submitted - reset and close
+        setRideStatus('idle')
+        setRating(0)
+        setReviewComment('')
+        setActiveSection('home')
+        setPickupLocation('Current Location')
+        setBookingMessage('')
+        setAssignedDriver(null)
+        setRideFare(0)
+        setRideDriverName('Driver')
+        setRideDriverCid('')
+        setRideId('')
+        setPaymentProcessing(false)
+        setSelectedPaymentMethod('debit')
+        handledCompletionRef.current = false
+        console.log('[qbx_taxijob] [CustomerTablet] Closing tablet without review submission (missing data)')
+        onClose()
+        return
+      }
+
+      setSubmittingReview(true)
+      console.log('[qbx_taxijob] [CustomerTablet] Submitting review:', {
+        driverCid: rideDriverCid,
+        rideId,
+        rating,
+        comment: reviewComment
+      })
+
+      try {
+        const response = await fetch('https://qbx_taxijob/customer:submitReview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            driverCid: rideDriverCid,
+            rideId,
+            rating,
+            comment: reviewComment
+          })
+        })
+
+        const result = await response.json()
+        console.log('[qbx_taxijob] [CustomerTablet] Review submission result:', result)
+
+        if (result.success) {
+          console.log('[qbx_taxijob] [CustomerTablet] Review submitted successfully')
+        } else {
+          console.log('[qbx_taxijob] [CustomerTablet] Review submission failed')
+        }
+      } catch (error) {
+        console.error('[qbx_taxijob] [CustomerTablet] Error submitting review:', error)
+      } finally {
+        setSubmittingReview(false)
+        // Reset all state to defaults
+        setRideStatus('idle')
+        setRating(0)
+        setReviewComment('')
+        setActiveSection('home')
+        setPickupLocation('Current Location')
+        setBookingMessage('')
+        setAssignedDriver(null)
+        setRideFare(0)
+        setRideDriverName('Driver')
+        setRideDriverCid('')
+        setRideId('')
+        setPaymentProcessing(false)
+        setSelectedPaymentMethod('debit')
+        handledCompletionRef.current = false
+        
+        // Close the NUI tablet
+        console.log('[qbx_taxijob] [CustomerTablet] Closing tablet after review submission')
+        onClose()
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="glass-card p-5 text-center">
+          <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4"><Car size={48} className="text-green-400" /></div>
+          <h2 className="text-xl font-bold text-white mb-2">Ride Completed!</h2>
+          <p className="text-gray-400 mb-4">Thank you for riding with us</p>
+          <div className="glass-card p-4 mb-4">
+            <img src={currentDriver.profilePic} alt="Driver" className="w-20 h-20 rounded-full border-4 border-cyan-500/30 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-white mb-2">{currentDriver.name}</h3>
+            <p className="text-gray-400 mb-4">How was your ride?</p>
+            <div className="flex justify-center gap-3 mb-4">
+              {[1,2,3,4,5].map(star => (
+                <button key={star} onClick={() => setRating(star)} className="transition-transform hover:scale-110" disabled={submittingReview}>
+                  <Star size={40} fill={star <= rating ? '#fbbf24' : 'none'} stroke={star <= rating ? '#fbbf24' : '#6b7280'} className="transition-colors" />
+                </button>
+              ))}
+            </div>
+            <textarea 
+              placeholder="Add a comment (optional)" 
+              value={reviewComment}
+              onChange={(e) => setReviewComment(e.target.value)}
+              disabled={submittingReview}
+              className="w-full glass-input p-4 text-white rounded-2xl mb-4 resize-none" 
+              rows={3} 
+            />
           </div>
-          <textarea placeholder="Add a comment (optional)" className="w-full glass-input p-4 text-white rounded-2xl mb-4 resize-none" rows={3} />
+          <div className="glass-card p-4 mb-4 text-left">
+            <h3 className="text-lg font-bold text-white mb-4">Fare Summary</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between text-gray-300">
+                <span>Total Fare</span>
+                <span className="text-white font-bold">${rideFare.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-400">
+                <span>Payment Method</span>
+                <span>{selectedPaymentMethod === 'cash' ? 'Cash' : 'Debit Card'}</span>
+              </div>
+            </div>
+          </div>
+          <button 
+            onClick={handleSubmitReview} 
+            disabled={submittingReview}
+            className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 rounded-xl font-bold text-base hover:shadow-lg hover:shadow-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submittingReview ? 'Submitting...' : 'Submit Rating & Finish'}
+          </button>
         </div>
-        <div className="glass-card p-4 mb-4 text-left">
-          <h3 className="text-lg font-bold text-white mb-4">Fare Summary</h3>
-          <div className="space-y-2"><div className="flex justify-between text-gray-300"><span>Total Fare</span><span className="text-white font-bold">${fareBreakdown.total.toFixed(2)}</span></div><div className="flex justify-between text-sm text-gray-400"><span>Payment Method</span><span>•••• 4242</span></div></div>
-        </div>
-        <button onClick={() => { setRideStatus('idle'); setRating(0); setActiveSection('home') }} className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 rounded-xl font-bold text-base">Submit Rating & Finish</button>
       </div>
-    </div>
-  )
+    )
+  }
 
   const Payment = () => (
     <div className="space-y-4">

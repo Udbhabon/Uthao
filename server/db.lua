@@ -220,6 +220,94 @@ function DB.addTransaction(user_id, driver_id, ride_id, amount, payment_status)
     scheduleSave()
 end
 
+-- Review and Rating Functions
+function DB.addReview(user_id, driver_id, ride_id, rating, comment)
+    if not DB.data.reviews then DB.data.reviews = {} end
+    if not DB.data.driver_stats then DB.data.driver_stats = {} end
+    
+    local review_id = tostring(os.time()) .. '-' .. tostring(math.random(1000, 9999))
+    local review = {
+        review_id = review_id,
+        user_id = user_id,
+        driver_id = driver_id,
+        ride_id = ride_id,
+        rating = tonumber(rating) or 5,
+        comment = comment or '',
+        timestamp = os.time(),
+    }
+    
+    -- Store review
+    DB.data.reviews[review_id] = review
+    
+    -- Update driver stats
+    local stats = DB.data.driver_stats[driver_id] or {
+        driver_id = driver_id,
+        total_reviews = 0,
+        average_rating = 0,
+        total_rating_sum = 0,
+        ratings_breakdown = {
+            [1] = 0,
+            [2] = 0,
+            [3] = 0,
+            [4] = 0,
+            [5] = 0,
+        }
+    }
+    
+    stats.total_reviews = stats.total_reviews + 1
+    stats.total_rating_sum = stats.total_rating_sum + review.rating
+    stats.average_rating = stats.total_rating_sum / stats.total_reviews
+    stats.ratings_breakdown[review.rating] = (stats.ratings_breakdown[review.rating] or 0) + 1
+    
+    DB.data.driver_stats[driver_id] = stats
+    
+    -- Update driver's average rating in drivers table
+    if DB.data.drivers[driver_id] then
+        DB.data.drivers[driver_id].average_rating = stats.average_rating
+        DB.data.drivers[driver_id].total_reviews = stats.total_reviews
+    end
+    
+    print(('[qbx_taxijob] [DB] Review added for driver %s - Rating: %d, New Average: %.2f'):format(driver_id, review.rating, stats.average_rating))
+    scheduleSave()
+    return review_id
+end
+
+function DB.getDriverReviews(driver_id, limit)
+    if not DB.data.reviews then return {} end
+    limit = limit or 10
+    
+    local reviews = {}
+    for _, review in pairs(DB.data.reviews) do
+        if review.driver_id == driver_id then
+            table.insert(reviews, review)
+        end
+    end
+    
+    -- Sort by timestamp (newest first)
+    table.sort(reviews, function(a, b)
+        return a.timestamp > b.timestamp
+    end)
+    
+    -- Limit results
+    local result = {}
+    for i = 1, math.min(limit, #reviews) do
+        result[#result + 1] = reviews[i]
+    end
+    
+    return result
+end
+
+function DB.getDriverStats(driver_id)
+    if not DB.data.driver_stats then return nil end
+    return DB.data.driver_stats[driver_id]
+end
+
+function DB.getPassengerName(user_id)
+    if not DB.data.users then return 'Unknown' end
+    local user = DB.data.users[user_id]
+    return user and user.name or 'Unknown'
+end
+
 -- Expose globally for use in server/main.lua without require
 QbxTaxiDB = DB
 DB.init()

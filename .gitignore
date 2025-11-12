@@ -54,3 +54,4 @@ html/.DS_Store
 data/db.json
 html/dist/*
 /html/dist
+/data

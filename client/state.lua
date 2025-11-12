@@ -167,11 +167,20 @@ function calculateFareAmount()
             end
 
             meterData['currentFare'] = math.floor(fareAmount)
+            
+            print(('[qbx_taxijob] [calculateFareAmount] Distance: %.2f mi, Fare: $%d'):format(meterData['distanceTraveled'], meterData['currentFare']))
 
             SendNUIMessage({
                 action = 'updateMeter',
                 meterData = meterData
             })
+        end
+    else
+        if not meterIsOpen then
+            -- print('[qbx_taxijob] [calculateFareAmount] Meter not open')
+        end
+        if not meterActive then
+            -- print('[qbx_taxijob] [calculateFareAmount] Meter not active')
         end
     end
 end

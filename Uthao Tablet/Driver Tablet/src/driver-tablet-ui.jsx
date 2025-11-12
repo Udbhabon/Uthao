@@ -2,9 +2,20 @@ import React, { useState } from 'react';
 import { Car, Navigation, DollarSign, User, MapPin, Clock, Check, X, ChevronRight, Star, TrendingUp, Award, Calendar } from 'lucide-react';
 
 const DriverTabletUI = () => {
-  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, accepted, ongoing, completed, profile
-  const [selectedRide, setSelectedRide] = useState(null);
+  const [currentView, setCurrentView] = useState('accepted'); // accepted, ongoing, completed, profile - REMOVED dashboard
   const [rideStartTime, setRideStartTime] = useState(null);
+  
+  // Default ride data (since we're showing accepted screen by default)
+  const [selectedRide] = useState({
+    id: 1,
+    passenger: 'Sarah Johnson',
+    rating: 4.8,
+    pickup: '123 Market Street, Downtown',
+    pickupDistance: '0.8 mi',
+    destination: '456 Oak Avenue, Westside',
+    fare: 18.50,
+    avatar: 'https://avatar.iran.liara.run/public/girl'
+  });
   
   // Driver profile data
   const driverProfile = {
@@ -24,59 +35,7 @@ const DriverTabletUI = () => {
     badges: ['Top Rated', 'Safe Driver', '1000+ Rides']
   };
   
-  // Mock ride requests data
-  const [rideRequests, setRideRequests] = useState([
-    {
-      id: 1,
-      passenger: 'Sarah Johnson',
-      rating: 4.8,
-      pickup: '123 Market Street, Downtown',
-      pickupDistance: '0.8 mi',
-      destination: '456 Oak Avenue, Westside',
-      fare: 18.50,
-      avatar: 'https://avatar.iran.liara.run/public/girl'
-    },
-    {
-      id: 2,
-      passenger: 'Michael Chen',
-      rating: 4.9,
-      pickup: '789 Pine Road, Northside',
-      pickupDistance: '1.2 mi',
-      destination: '321 Elm Street, Eastside',
-      fare: 22.00,
-      avatar: 'https://avatar.iran.liara.run/public/boy'
-    },
-    {
-      id: 3,
-      passenger: 'Emily Davis',
-      rating: 5.0,
-      pickup: '555 Maple Drive, Southside',
-      pickupDistance: '2.1 mi',
-      destination: '888 Birch Lane, Central',
-      fare: 15.75,
-      avatar: 'https://avatar.iran.liara.run/public/girl'
-    },
-    {
-      id: 4,
-      passenger: 'James Wilson',
-      rating: 4.7,
-      pickup: '999 Cedar Court, Harbor District',
-      pickupDistance: '0.5 mi',
-      destination: '111 Walnut Way, Airport',
-      fare: 35.00,
-      avatar: 'https://avatar.iran.liara.run/public/boy'
-    }
-  ]);
 
-  const handleAcceptRide = (ride) => {
-    setSelectedRide(ride);
-    setCurrentView('accepted');
-    setRideRequests(rideRequests.filter(r => r.id !== ride.id));
-  };
-
-  const handleDeclineRide = (rideId) => {
-    setRideRequests(rideRequests.filter(r => r.id !== rideId));
-  };
 
   const handleStartRide = () => {
     setRideStartTime(new Date());
@@ -88,127 +47,30 @@ const DriverTabletUI = () => {
   };
 
   const handlePaymentComplete = () => {
-    setCurrentView('dashboard');
-    setSelectedRide(null);
+    setCurrentView('accepted'); // Changed from 'dashboard' to 'accepted'
     setRideStartTime(null);
   };
-
-  // Dashboard View - Available Rides
-  const DashboardView = () => (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between mb-6 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-            <Car className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Uthao - Available Rides</h1>
-            <p className="text-gray-400 text-sm">Accept rides to start earning</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setCurrentView('profile')}
-            className="bg-white/5 backdrop-blur-xl rounded-2xl px-4 py-3 border border-white/10 hover:bg-white/10 transition-all duration-300 flex items-center gap-2"
-          >
-            <User className="w-5 h-5 text-white" />
-            <span className="text-white font-medium">Profile</span>
-          </button>
-          <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl rounded-2xl px-5 py-3 border border-white/10">
-            <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span className="text-white font-medium">Online</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar min-h-0">
-        {rideRequests.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <Car className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-400 text-lg">No rides available</p>
-              <p className="text-gray-500 text-sm">New requests will appear here</p>
-            </div>
-          </div>
-        ) : (
-          rideRequests.map((ride) => (
-            <div
-              key={ride.id}
-              className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/10 hover:bg-white/10 transition-all duration-300 flex-shrink-0"
-            >
-              <div className="flex items-start mb-5">
-                <div className="flex items-center gap-4">
-                  <img 
-                    src={ride.avatar} 
-                    alt={ride.passenger}
-                    className="w-14 h-14 rounded-2xl object-cover"
-                  />
-                  <div>
-                    <h3 className="text-white font-bold text-lg">{ride.passenger}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex items-center gap-1">
-                        {[...Array(5)].map((_, i) => (
-                          <svg key={i} className={`w-4 h-4 ${i < Math.floor(ride.rating) ? 'text-yellow-400' : 'text-gray-600'}`} fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                          </svg>
-                        ))}
-                        <span className="text-gray-400 text-sm ml-1">{ride.rating}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3 mb-5">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                    <MapPin className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-gray-400 text-xs mb-1">Pickup Location</p>
-                    <p className="text-white font-medium">{ride.pickup}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Navigation className="w-4 h-4 text-teal-400" />
-                      <span className="text-teal-400 font-medium text-sm">{ride.pickupDistance} away</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleDeclineRide(ride.id)}
-                  className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold py-4 rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 border border-red-500/30"
-                >
-                  <X className="w-5 h-5" />
-                  Decline
-                </button>
-                <button
-                  onClick={() => handleAcceptRide(ride)}
-                  className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-4 rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30"
-                >
-                  <Check className="w-5 h-5" />
-                  Accept Ride
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
 
   // Accepted View
   const AcceptedView = () => (
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex items-center gap-3 mb-5 flex-shrink-0">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-          <Check className="w-7 h-7 text-white" />
+      <div className="flex items-center justify-between mb-5 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+            <Check className="w-7 h-7 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Ride Accepted</h1>
+            <p className="text-gray-400 text-sm">Navigate to pickup location</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-white">Ride Accepted</h1>
-          <p className="text-gray-400 text-sm">Navigate to pickup location</p>
-        </div>
+        <button
+          onClick={() => setCurrentView('profile')}
+          className="bg-white/5 backdrop-blur-xl rounded-2xl px-4 py-3 border border-white/10 hover:bg-white/10 transition-all duration-300 flex items-center gap-2"
+        >
+          <User className="w-5 h-5 text-white" />
+          <span className="text-white font-medium">Profile</span>
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
@@ -402,10 +264,10 @@ const DriverTabletUI = () => {
           </div>
         </div>
         <button
-          onClick={() => setCurrentView('dashboard')}
+          onClick={() => setCurrentView('accepted')}
           className="bg-white/5 backdrop-blur-xl rounded-xl px-4 py-2 border border-white/10 text-white hover:bg-white/10 transition-all duration-300"
         >
-          Back to Dashboard
+          Back to Ride
         </button>
       </div>
 
@@ -548,7 +410,6 @@ const DriverTabletUI = () => {
         {/* Scrollable Content Area */}
         <div className="h-full w-full p-8">
           <div className="h-full bg-gradient-to-br from-gray-900/50 to-gray-800/50 backdrop-blur-xl rounded-3xl p-8 overflow-hidden">
-            {currentView === 'dashboard' && <DashboardView />}
             {currentView === 'accepted' && <AcceptedView />}
             {currentView === 'ongoing' && <OngoingView />}
             {currentView === 'completed' && <CompletedView />}

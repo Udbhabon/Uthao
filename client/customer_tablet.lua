@@ -118,6 +118,29 @@ RegisterNetEvent('qbx_taxijob:client:AllDriversBusy', function()
     exports.qbx_core:Notify('All drivers are busy right now. Please try again later.', 'error')
 end)
 
+-- Handle ride completed (driver ended the ride)
+RegisterNetEvent('qbx_taxijob:client:RideCompleted', function(data)
+    local fare = data.fare or 0
+    local paid = data.paid or false
+    local driverName = data.driverName or 'Driver'
+    
+    print(('[qbx_taxijob] [CLIENT] Ride completed notification received - Fare: $%.2f, Paid: %s'):format(fare, tostring(paid)))
+    print(('[qbx_taxijob] [CLIENT] Customer tablet open: %s'):format(tostring(customerTabletOpen)))
+    
+    -- ALWAYS send to NUI regardless of tablet open state
+    -- This ensures the state is updated even if customer opens tablet after ride ends
+    SendNUIMessage({
+        action = 'rideCompleted',
+        fare = fare,
+        paid = paid,
+        driverName = driverName
+    })
+    print('[qbx_taxijob] [CLIENT] Sent ride completed to NUI (will update when tablet opens if not already open)')
+    
+    -- Show notification to customer
+    exports.qbx_core:Notify(('Ride completed! Fare: $%.2f - Open your tablet to pay'):format(fare), 'inform')
+end)
+
 -- Book ride callback - now fully functional
 RegisterNUICallback('customer:bookRide', function(data, cb)
     local pickupLocation = data.pickupLocation or 'Current Location'
@@ -138,6 +161,50 @@ RegisterNUICallback('customer:bookRide', function(data, cb)
     exports.qbx_core:Notify('Ride requested. Waiting for drivers to respond...', 'inform')
     
     cb('ok')
+end)
+
+-- Payment confirmation from customer tablet UI
+RegisterNUICallback('customer:confirmPayment', function(data, cb)
+    local paymentMethod = data.method or 'debit'  -- 'debit' or 'cash'
+    local confirmed = data.confirmed or false
+    
+    print(('[qbx_taxijob] [CLIENT] Payment confirmation received - Method: %s, Confirmed: %s'):format(paymentMethod, tostring(confirmed)))
+    
+    -- Send confirmation to server
+    TriggerServerEvent('qbx_taxijob:server:ProcessPayment', {
+        method = paymentMethod,
+        confirmed = confirmed
+    })
+    
+    cb('ok')
+end)
+
+-- Submit review from customer tablet UI
+RegisterNUICallback('customer:submitReview', function(data, cb)
+    local driverCid = data.driverCid
+    local rideId = data.rideId
+    local rating = tonumber(data.rating) or 5
+    local comment = data.comment or ''
+    
+    print(('[qbx_taxijob] [CLIENT] Review submission - Driver: %s, Rating: %d, Comment: %s'):format(
+        tostring(driverCid), rating, comment
+    ))
+    
+    -- Send review to server
+    local result = lib.callback.await('qbx_taxijob:server:SubmitReview', false, {
+        driverCid = driverCid,
+        rideId = rideId,
+        rating = rating,
+        comment = comment
+    })
+    
+    if result and result.success then
+        exports.qbx_core:Notify('Thank you for your feedback!', 'success')
+        cb({success = true})
+    else
+        exports.qbx_core:Notify('Failed to submit review', 'error')
+        cb({success = false})
+    end
 end)
 
 -- Safety: if resource restarts while focus stuck, ensure focus off
