@@ -16,6 +16,7 @@ client_scripts {
 }
 
 server_scripts {
+	'@oxmysql/lib/MySQL.lua',
 	'server/db.lua',
 	'server/main.lua'
 }
@@ -38,4 +39,8 @@ provide 'qb-taxijob'
 lua54 'yes'
 use_experimental_fxv2_oal 'yes'
 ox_lib 'locale'
-dependency 'qbx_core'
+
+dependencies {
+	'qbx_core',
+	'oxmysql'
+}

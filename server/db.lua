@@ -1,61 +1,11 @@
--- Simple JSON-backed store for driver duty/status, users, rides, and vehicles
+-- Database abstraction layer for qbx_taxijob using MySQL via oxmysql
+-- Migrated from JSON to MySQL database
 -- File: server/db.lua
 
-local RESOURCE = GetCurrentResourceName()
-local DB_PATH = 'data/db.json' -- kept inside resource folder; SaveResourceFile will create/update it
-
----@class TaxiJsonDB
+---@class TaxiMySQLDB
 local DB = {
-    data = {
-        users = {},       -- [user_id=citizenid] = { user_id, name, phone_number, payment_method_id }
-        drivers = {},     -- [driver_id=citizenid] = { driver_id, name, job, availability_status, location, vehicle_id, lastOn, lastOff }
-        vehicles = {},    -- [vehicle_id=plate] = { vehicle_id, driver_id, vehicle_type, license_plate, model }
-        rides = {},       -- [ride_id=reqId] = { ride_id, user_id, driver_id, pickup_location, dropoff_location, status, start_time, end_time, fare_amount }
-        transactions = {},-- kept for future expansion
-        ratings = {},     -- kept for future expansion
-    },
-    _dirty = false,
-    _saveTimer = nil,
-    driverActiveRide = {}, -- [driver_id=citizenid] = ride_id
+    driverActiveRide = {}, -- [driver_id=citizenid] = ride_id (in-memory cache)
 }
-
-local function safeDecode(raw)
-    if not raw or raw == '' then return nil end
-    local ok, obj = pcall(json.decode, raw)
-    if ok and type(obj) == 'table' then return obj end
-    print(('[qbx_taxijob] [WARNING] Failed to decode %s; starting fresh'):format(DB_PATH))
-    return nil
-end
-
-local function load()
-    local raw = LoadResourceFile(RESOURCE, DB_PATH)
-    local obj = safeDecode(raw)
-    if obj and type(obj) == 'table' then
-        DB.data = obj
-    else
-        -- ensure table shape
-        DB.data = DB.data or {
-            users = {}, drivers = {}, vehicles = {}, rides = {}, transactions = {}, ratings = {},
-        }
-        -- write an initial file so it exists on disk
-        SaveResourceFile(RESOURCE, DB_PATH, json.encode(DB.data), -1)
-    end
-end
-
-local function flush()
-    DB._dirty = false
-    DB._saveTimer = nil
-    local encoded = json.encode(DB.data)
-    SaveResourceFile(RESOURCE, DB_PATH, encoded, -1)
-end
-
-local function scheduleSave()
-    if DB._saveTimer then return end
-    DB._dirty = true
-    DB._saveTimer = SetTimeout(750, function()
-        flush()
-    end)
-end
 
 -- Utilities to extract IDs and names from qbx_core player
 local function getCitizenId(player)
@@ -71,97 +21,145 @@ local function getPlayerName(player)
     return player.PlayerData.name or 'unknown'
 end
 
--- Public API
+-- ============================================================================
+-- INITIALIZATION & UTILITIES
+-- ============================================================================
 
 function DB.init()
-    load()
-    AddEventHandler('onResourceStop', function(res)
-        if res ~= RESOURCE then return end
-        if DB._dirty then flush() end
+    CreateThread(function()
+        Wait(1000) -- Wait for oxmysql to be ready
+        DB.checkTables()
     end)
 end
+
+function DB.checkTables()
+    local tables = {
+        'taxi_users', 'taxi_drivers', 'taxi_vehicles', 'taxi_rides',
+        'taxi_transactions', 'taxi_reviews', 'taxi_driver_stats'
+    }
+    
+    print('[qbx_taxijob] [DB] Checking MySQL database tables...')
+    
+    for _, table_name in ipairs(tables) do
+        local exists = MySQL.scalar.await(
+            'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            { table_name }
+        )
+        
+        if exists > 0 then
+            print(('[qbx_taxijob] [DB] ✓ Table exists: %s'):format(table_name))
+        else
+            print(('[qbx_taxijob] [DB] ✗ Table missing: %s - Please run sql/install.sql'):format(table_name))
+        end
+    end
+    
+    print('[qbx_taxijob] [DB] Database check complete')
+end
+
+-- ============================================================================
+-- USER FUNCTIONS
+-- ============================================================================
 
 function DB.upsertUserFromPlayer(player)
     local uid = getCitizenId(player)
     if not uid then return end
-    local users = DB.data.users
-    users[uid] = users[uid] or { user_id = uid }
-    users[uid].name = getPlayerName(player)
-    scheduleSave()
+    
+    local name = getPlayerName(player)
+    local phone = player.PlayerData and player.PlayerData.charinfo and player.PlayerData.charinfo.phone or ''
+    
+    local existing = MySQL.scalar.await('SELECT COUNT(*) FROM taxi_users WHERE citizenid = ?', { uid })
+    
+    if existing > 0 then
+        MySQL.update.await('UPDATE taxi_users SET name = ?, phone = ? WHERE citizenid = ?', { name, phone, uid })
+    else
+        MySQL.insert.await('INSERT INTO taxi_users (citizenid, name, phone) VALUES (?, ?, ?)', { uid, name, phone })
+    end
 end
+
+-- ============================================================================
+-- DRIVER FUNCTIONS
+-- ============================================================================
 
 -- availability_status: 'off' | 'available' | 'busy'
 function DB.updateDriverStatusFromPlayer(player, onDuty)
     local did = getCitizenId(player)
     if not did then return end
-    local drivers = DB.data.drivers
-    drivers[did] = drivers[did] or { driver_id = did }
-    local now = os.time()
-    drivers[did].name = getPlayerName(player)
-    drivers[did].job = player.PlayerData and player.PlayerData.job and player.PlayerData.job.name or 'unknown'
-    drivers[did].availability_status = onDuty and 'available' or 'off'
-    if onDuty then drivers[did].lastOn = now else drivers[did].lastOff = now end
-    -- best-effort location
-    local ped = GetPlayerPed(player.PlayerData and player.PlayerData.source or 0)
-    if ped and ped ~= 0 then
-        local c = GetEntityCoords(ped)
-        drivers[did].location = { x = c.x, y = c.y, z = c.z }
+    
+    local name = getPlayerName(player)
+    local job = player.PlayerData and player.PlayerData.job and player.PlayerData.job.name or 'unknown'
+    
+    local existing = MySQL.scalar.await('SELECT COUNT(*) FROM taxi_drivers WHERE citizenid = ?', { did })
+    
+    if existing > 0 then
+        MySQL.update.await('UPDATE taxi_drivers SET name = ?, is_active = ? WHERE citizenid = ?', {
+            name, onDuty and 1 or 0, did
+        })
+    else
+        MySQL.insert.await('INSERT INTO taxi_drivers (citizenid, name, is_active) VALUES (?, ?, ?)', {
+            did, name, onDuty and 1 or 0
+        })
     end
-    scheduleSave()
 end
 
 function DB.assignVehicleToDriver(player, plate, model)
     local did = getCitizenId(player)
     if not did or not plate then return end
-    local vehicles = DB.data.vehicles
-    vehicles[plate] = vehicles[plate] or { vehicle_id = plate }
-    vehicles[plate].driver_id = did
-    vehicles[plate].license_plate = plate
-    vehicles[plate].model = model
-    vehicles[plate].vehicle_type = 'sedan' -- unknown; placeholder
-    local drivers = DB.data.drivers
-    drivers[did] = drivers[did] or { driver_id = did }
-    drivers[did].vehicle_id = plate
-    scheduleSave()
+    
+    local existing = MySQL.scalar.await('SELECT COUNT(*) FROM taxi_vehicles WHERE plate = ?', { plate })
+    
+    if existing > 0 then
+        MySQL.update.await('UPDATE taxi_vehicles SET driver_cid = ?, model = ? WHERE plate = ?', {
+            did, model, plate
+        })
+    else
+        MySQL.insert.await('INSERT INTO taxi_vehicles (plate, model, driver_cid) VALUES (?, ?, ?)', {
+            plate, model, did
+        })
+    end
+    
+    -- Update driver's vehicle info
+    MySQL.update.await('UPDATE taxi_drivers SET vehicle_model = ?, vehicle_plate = ? WHERE citizenid = ?', {
+        model, plate, did
+    })
 end
+
+-- ============================================================================
+-- RIDE FUNCTIONS
+-- ============================================================================
 
 function DB.createRide(ride_id, requesterPlayer, pickup, message)
     if not ride_id then return end
     local uid = getCitizenId(requesterPlayer)
     if not uid then return end
+    
     DB.upsertUserFromPlayer(requesterPlayer)
-    local rides = DB.data.rides
-    rides[ride_id] = {
-        ride_id = ride_id,
-        user_id = uid,
-        driver_id = nil,
-        pickup_location = pickup and { x = pickup.x, y = pickup.y, z = pickup.z } or nil,
-        dropoff_location = nil,
-        status = 'booked',
-        start_time = nil,
-        end_time = nil,
-        fare_amount = nil,
-        note = message or '',
-    }
-    scheduleSave()
+    
+    local passenger_name = getPlayerName(requesterPlayer)
+    local pickup_loc = pickup and json.encode({ x = pickup.x, y = pickup.y, z = pickup.z }) or nil
+    
+    MySQL.insert.await(
+        'INSERT INTO taxi_rides (ride_id, passenger_cid, passenger_name, driver_cid, driver_name, pickup_location, pickup_message, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        { ride_id, uid, passenger_name, '', '', pickup_loc, message or '', 'pending' }
+    )
+    
+    print(('[qbx_taxijob] [DB] Created ride: %s'):format(ride_id))
 end
 
 function DB.acceptRide(ride_id, driverPlayer)
     if not ride_id then return end
-    local rides = DB.data.rides
-    local r = rides[ride_id]
-    if not r then return end
     local did = getCitizenId(driverPlayer)
     if not did then return end
+    
     DB.updateDriverStatusFromPlayer(driverPlayer, true)
-    r.driver_id = did
-    r.status = 'accepted'
+    
+    local driver_name = getPlayerName(driverPlayer)
+    
+    MySQL.update.await('UPDATE taxi_rides SET driver_cid = ?, driver_name = ?, status = ? WHERE ride_id = ?', {
+        did, driver_name, 'accepted', ride_id
+    })
+    
     DB.driverActiveRide[did] = ride_id
-    -- mark driver busy
-    local drivers = DB.data.drivers
-    drivers[did] = drivers[did] or { driver_id = did }
-    drivers[did].availability_status = 'busy'
-    scheduleSave()
+    print(('[qbx_taxijob] [DB] Driver %s accepted ride: %s'):format(did, ride_id))
 end
 
 function DB.markInProgressByDriver(driverPlayer)
@@ -169,143 +167,136 @@ function DB.markInProgressByDriver(driverPlayer)
     if not did then return end
     local ride_id = DB.driverActiveRide[did]
     if not ride_id then return end
-    local r = DB.data.rides[ride_id]
-    if not r then return end
-    if r.status ~= 'in-progress' then
-        r.status = 'in-progress'
-        r.start_time = os.time()
-        scheduleSave()
-    end
+    
+    MySQL.update.await('UPDATE taxi_rides SET status = ? WHERE ride_id = ? AND status != ?', {
+        'in_progress', ride_id, 'in_progress'
+    })
 end
 
 function DB.completeRideByDriver(driverPlayer)
     local did = getCitizenId(driverPlayer)
     if not did then return end
     local ride_id = DB.driverActiveRide[did]
+    
     if ride_id then
-        local r = DB.data.rides[ride_id]
-        if r then
-            r.status = 'completed'
-            r.end_time = os.time()
-        end
+        MySQL.update.await('UPDATE taxi_rides SET status = ?, completed_at = NOW() WHERE ride_id = ?', {
+            'completed', ride_id
+        })
     end
+    
     DB.driverActiveRide[did] = nil
-    -- driver back to available if still on duty
-    local drivers = DB.data.drivers
-    drivers[did] = drivers[did] or { driver_id = did }
-    if drivers[did].availability_status ~= 'off' then
-        drivers[did].availability_status = 'available'
-    end
-    scheduleSave()
+    print(('[qbx_taxijob] [DB] Driver %s completed ride: %s'):format(did, ride_id))
 end
+
+-- ============================================================================
+-- TRANSACTION FUNCTIONS
+-- ============================================================================
 
 function DB.addTransaction(user_id, driver_id, ride_id, amount, payment_status)
-    if not DB.data.transactions then DB.data.transactions = {} end
-    local tx = {
-        transaction_id = tostring(os.time()) .. '-' .. tostring(math.random(1000, 9999)),
-        user_id = user_id,
-        driver_id = driver_id,
-        ride_id = ride_id,
-        amount = tonumber(amount) or 0,
-        payment_status = payment_status or 'unknown',
-        ts = os.time(),
-    }
-    local t = DB.data.transactions
-    if t[1] == nil and next(t) == nil then
-        -- normalize to array if empty table
-        DB.data.transactions = { tx }
-    else
-        table.insert(DB.data.transactions, tx)
-    end
-    scheduleSave()
+    local transaction_id = ('tx_%s_%s'):format(os.time(), math.random(1000, 9999))
+    
+    MySQL.insert.await(
+        'INSERT INTO taxi_transactions (transaction_id, ride_id, passenger_cid, driver_cid, amount, payment_method, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        { transaction_id, ride_id, user_id, driver_id, tonumber(amount) or 0, 'cash', payment_status or 'pending' }
+    )
+    
+    print(('[qbx_taxijob] [DB] Created transaction: %s'):format(transaction_id))
+    return transaction_id
 end
 
--- Review and Rating Functions
+-- ============================================================================
+-- REVIEW AND RATING FUNCTIONS
+-- ============================================================================
+
 function DB.addReview(user_id, driver_id, ride_id, rating, comment)
-    if not DB.data.reviews then DB.data.reviews = {} end
-    if not DB.data.driver_stats then DB.data.driver_stats = {} end
-    
-    local review_id = tostring(os.time()) .. '-' .. tostring(math.random(1000, 9999))
-    local review = {
-        review_id = review_id,
-        user_id = user_id,
-        driver_id = driver_id,
-        ride_id = ride_id,
-        rating = tonumber(rating) or 5,
-        comment = comment or '',
-        timestamp = os.time(),
-    }
-    
-    -- Store review
-    DB.data.reviews[review_id] = review
-    
-    -- Update driver stats
-    local stats = DB.data.driver_stats[driver_id] or {
-        driver_id = driver_id,
-        total_reviews = 0,
-        average_rating = 0,
-        total_rating_sum = 0,
-        ratings_breakdown = {
-            [1] = 0,
-            [2] = 0,
-            [3] = 0,
-            [4] = 0,
-            [5] = 0,
-        }
-    }
-    
-    stats.total_reviews = stats.total_reviews + 1
-    stats.total_rating_sum = stats.total_rating_sum + review.rating
-    stats.average_rating = stats.total_rating_sum / stats.total_reviews
-    stats.ratings_breakdown[review.rating] = (stats.ratings_breakdown[review.rating] or 0) + 1
-    
-    DB.data.driver_stats[driver_id] = stats
-    
-    -- Update driver's average rating in drivers table
-    if DB.data.drivers[driver_id] then
-        DB.data.drivers[driver_id].average_rating = stats.average_rating
-        DB.data.drivers[driver_id].total_reviews = stats.total_reviews
+    -- Validate rating
+    if rating < 1 or rating > 5 then
+        print(('[qbx_taxijob] [DB] [ERROR] Invalid rating: %s (must be 1-5)'):format(rating))
+        return nil
     end
     
-    print(('[qbx_taxijob] [DB] Review added for driver %s - Rating: %d, New Average: %.2f'):format(driver_id, review.rating, stats.average_rating))
-    scheduleSave()
+    local review_id = ('review_%s_%s'):format(driver_id, os.time())
+    
+    -- Insert review
+    MySQL.insert.await(
+        'INSERT INTO taxi_reviews (review_id, ride_id, passenger_cid, driver_cid, rating, comment) VALUES (?, ?, ?, ?, ?, ?)',
+        { review_id, ride_id, user_id, driver_id, rating, comment or '' }
+    )
+    print(('[qbx_taxijob] [DB] Created review: %s'):format(review_id))
+    
+    -- Update driver stats
+    local stats = MySQL.single.await('SELECT * FROM taxi_driver_stats WHERE driver_cid = ? LIMIT 1', { driver_id })
+    
+    if stats then
+        -- Running average calculation
+        local new_total_reviews = stats.total_reviews + 1
+        local new_total_rating_sum = stats.total_rating_sum + rating
+        local new_average_rating = new_total_rating_sum / new_total_reviews
+        
+        -- Update rating breakdown
+        local breakdown_field = ('rating_%s_count'):format(rating)
+        
+        MySQL.update.await(
+            ('UPDATE taxi_driver_stats SET total_reviews = ?, total_rating_sum = ?, average_rating = ?, %s = %s + 1 WHERE driver_cid = ?'):format(breakdown_field, breakdown_field),
+            { new_total_reviews, new_total_rating_sum, new_average_rating, driver_id }
+        )
+        
+        -- Also update drivers table for quick access
+        MySQL.update.await('UPDATE taxi_drivers SET rating = ? WHERE citizenid = ?', { new_average_rating, driver_id })
+        
+        print(('[qbx_taxijob] [DB] Updated driver stats - New avg: %.2f (%d reviews)'):format(new_average_rating, new_total_reviews))
+    else
+        -- Create stats entry
+        MySQL.insert.await(
+            'INSERT INTO taxi_driver_stats (driver_cid, total_reviews, total_rating_sum, average_rating, rating_1_count, rating_2_count, rating_3_count, rating_4_count, rating_5_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            { driver_id, 1, rating, rating, 
+              rating == 1 and 1 or 0,
+              rating == 2 and 1 or 0,
+              rating == 3 and 1 or 0,
+              rating == 4 and 1 or 0,
+              rating == 5 and 1 or 0
+            }
+        )
+        
+        MySQL.update.await('UPDATE taxi_drivers SET rating = ? WHERE citizenid = ?', { rating, driver_id })
+        print(('[qbx_taxijob] [DB] Created driver stats for: %s'):format(driver_id))
+    end
+    
     return review_id
 end
 
 function DB.getDriverReviews(driver_id, limit)
-    if not DB.data.reviews then return {} end
     limit = limit or 10
     
-    local reviews = {}
-    for _, review in pairs(DB.data.reviews) do
-        if review.driver_id == driver_id then
-            table.insert(reviews, review)
-        end
-    end
+    local results = MySQL.query.await(
+        'SELECT * FROM taxi_reviews WHERE driver_cid = ? ORDER BY created_at DESC LIMIT ?',
+        { driver_id, limit }
+    )
     
-    -- Sort by timestamp (newest first)
-    table.sort(reviews, function(a, b)
-        return a.timestamp > b.timestamp
-    end)
-    
-    -- Limit results
-    local result = {}
-    for i = 1, math.min(limit, #reviews) do
-        result[#result + 1] = reviews[i]
-    end
-    
-    return result
+    return results or {}
 end
 
 function DB.getDriverStats(driver_id)
-    if not DB.data.driver_stats then return nil end
-    return DB.data.driver_stats[driver_id]
+    local result = MySQL.single.await('SELECT * FROM taxi_driver_stats WHERE driver_cid = ? LIMIT 1', { driver_id })
+    return result
 end
 
 function DB.getPassengerName(user_id)
-    if not DB.data.users then return 'Unknown' end
-    local user = DB.data.users[user_id]
-    return user and user.name or 'Unknown'
+    local name = MySQL.scalar.await('SELECT name FROM taxi_users WHERE citizenid = ? LIMIT 1', { user_id })
+    return name or 'Anonymous'
+end
+
+-- Fetch a ride by ride_id
+function DB.getRide(ride_id)
+    if not ride_id then return nil end
+    local row = MySQL.single.await('SELECT * FROM taxi_rides WHERE ride_id = ? LIMIT 1', { ride_id })
+    return row
+end
+
+-- Update fare for a ride
+function DB.updateRideFare(ride_id, amount)
+    if not ride_id then return end
+    MySQL.update.await('UPDATE taxi_rides SET fare = ? WHERE ride_id = ?', { tonumber(amount) or 0, ride_id })
 end
 
 -- Expose globally for use in server/main.lua without require

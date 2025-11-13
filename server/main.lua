@@ -278,28 +278,14 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
         driverName = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (driverPlayer.PlayerData.name or 'Driver')
     end
 
-    -- Validate minimum ride time (60 seconds)
+    -- Determine ride id for DB updates
     local did = driverPlayer and driverPlayer.PlayerData and driverPlayer.PlayerData.citizenid or nil
-    local ride_id = (did and QbxTaxiDB and QbxTaxiDB.driverActiveRide[did]) or nil
-    if ride_id and QbxTaxiDB and QbxTaxiDB.data and QbxTaxiDB.data.rides and QbxTaxiDB.data.rides[ride_id] then
-        local ride = QbxTaxiDB.data.rides[ride_id]
-        if ride.start_time then
-            local elapsed = os.time() - ride.start_time
-            if elapsed < 60 then
-                lib.notify(src, {
-                    title = 'Taxi Job',
-                    description = string.format('Minimum ride time not met (%d seconds remaining)', 60 - elapsed),
-                    type = 'error'
-                })
-                return
-            end
-        end
-    end
+    local ride_id = (did and QbxTaxiDB and QbxTaxiDB.driverActiveRide and QbxTaxiDB.driverActiveRide[did]) or nil
 
-    -- Persist fare to ride record
+    -- Persist fare to ride record (MySQL)
     local uid = passengerPlayer and passengerPlayer.PlayerData and passengerPlayer.PlayerData.citizenid or nil
-    if ride_id and QbxTaxiDB and QbxTaxiDB.data and QbxTaxiDB.data.rides and QbxTaxiDB.data.rides[ride_id] then
-        QbxTaxiDB.data.rides[ride_id].fare_amount = amount
+    if ride_id and QbxTaxiDB and QbxTaxiDB.updateRideFare then
+        QbxTaxiDB.updateRideFare(ride_id, amount)
     end
 
     -- Complete ride and clear blips/assignment FIRST (so taxi meter stops)
@@ -511,19 +497,19 @@ local function startRideLogic(src)
     end
 
     local did = driver.PlayerData.citizenid
-    local ride_id = QbxTaxiDB.driverActiveRide[did]
+    local ride_id = QbxTaxiDB and QbxTaxiDB.driverActiveRide and QbxTaxiDB.driverActiveRide[did]
     if not ride_id then
         return false, 'No accepted ride found to start'
     end
-    local ride = QbxTaxiDB.data.rides[ride_id]
+    local ride = QbxTaxiDB and QbxTaxiDB.getRide and QbxTaxiDB.getRide(ride_id)
     if not ride then
         return false, 'Ride not found'
     end
-    if ride.status ~= 'accepted' and ride.status ~= 'in-progress' then
+    if ride.status ~= 'accepted' and ride.status ~= 'in_progress' then
         return false, 'Ride is not ready to start'
     end
 
-    local passengerSource = findSourceByCitizenId(ride.user_id)
+    local passengerSource = findSourceByCitizenId(ride.passenger_cid)
     if not passengerSource then
         return false, 'Passenger not online or not found'
     end
@@ -635,27 +621,6 @@ lib.callback.register('qb-taxi:server:spawnTaxi', function(source, model, coords
     return netId
 end)
 
-RegisterNetEvent('qb-taxi:server:NpcPay', function(payment)
-    local src = source
-    local player = exports.qbx_core:GetPlayer(src)
-    if player.PlayerData.job.name == 'taxi' then
-        if nearTaxi(src) then
-            local randomAmount = math.random(1, 5)
-            local r1, r2 = math.random(1, 5), math.random(1, 5)
-            if randomAmount == r1 or randomAmount == r2 then payment = payment + math.random(10, 20) end
-            player.Functions.AddMoney('cash', payment)
-            local chance = math.random(1, 100)
-            if chance < 26 then
-                player.Functions.AddItem('cryptostick', 1, false)
-                TriggerClientEvent('inventory:client:ItemBox', src, ITEMS['cryptostick'], 'add')
-            end
-        else
-            DropPlayer(src, 'Attempting To Exploit')
-        end
-    else
-        DropPlayer(src, 'Attempting To Exploit')
-    end
-end)
 
 -- Callback: Get list of online drivers for customer tablet
 lib.callback.register('qbx_taxijob:server:GetOnlineDrivers', function(source)
@@ -733,8 +698,8 @@ lib.callback.register('qbx_taxijob:server:GetDriverAcceptedRide', function(sourc
         return nil
     end
     
-    -- Get the ride data
-    local ride = QbxTaxiDB.data.rides[rideId]
+    -- Get the ride data (MySQL)
+    local ride = QbxTaxiDB.getRide and QbxTaxiDB.getRide(rideId)
     if not ride then
         print(('[qbx_taxijob] [ERROR] Ride %s not found for driver %s'):format(rideId, driverCitizenId))
         return nil
@@ -747,13 +712,16 @@ lib.callback.register('qbx_taxijob:server:GetDriverAcceptedRide', function(sourc
     end
     
     -- Get passenger info
-    local passenger = QbxTaxiDB.data.users[ride.user_id]
-    local passengerName = passenger and passenger.name or 'Unknown Passenger'
+    local passengerName = ride.passenger_name or 'Unknown Passenger'
     
     -- Get driver's current location for distance calculation
     local driverPed = GetPlayerPed(source)
     local driverCoords = GetEntityCoords(driverPed)
-    local pickupLoc = ride.pickup_location
+    local pickupLoc = nil
+    if ride.pickup_location then
+        local ok, decoded = pcall(json.decode, ride.pickup_location)
+        pickupLoc = ok and decoded or nil
+    end
     local distance = 0
     local distanceMi = '0.0 mi'
     
@@ -774,7 +742,7 @@ lib.callback.register('qbx_taxijob:server:GetDriverAcceptedRide', function(sourc
     
     -- Format pickup location as address (simplified)
     local pickupAddress = 'Unknown Location'
-    if pickupLoc then
+    if pickupLoc and pickupLoc.x and pickupLoc.y then
         pickupAddress = string.format('%.0f, %.0f Street', pickupLoc.x, pickupLoc.y)
     end
     
@@ -786,10 +754,10 @@ lib.callback.register('qbx_taxijob:server:GetDriverAcceptedRide', function(sourc
         pickup = pickupAddress,
         pickupCoords = pickupLoc,
         pickupDistance = distanceMi,
-        destination = ride.dropoff_location and string.format('%.0f, %.0f Street', ride.dropoff_location.x, ride.dropoff_location.y) or 'Not Set',
-        fare = ride.fare_amount or 0,
-        status = ride.status,
-        note = ride.note or '',
+    destination = 'Not Set',
+    fare = ride.fare or 0,
+    status = ride.status,
+    note = ride.pickup_message or '',
         vehicle = vehicleModel,
         vehiclePlate = vehiclePlate,
         avatar = 'https://avatar.iran.liara.run/public/' .. (math.random(1, 2) == 1 and 'boy' or 'girl')
