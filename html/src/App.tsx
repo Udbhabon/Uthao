@@ -109,7 +109,23 @@ export default function App() {
           setOnlineDrivers(data.drivers || [])
           break
         case 'rideAccepted':
-          setRideStatus({ status: 'accepted', driver: data.driverName, driverSrc: data.driverSrc })
+          setRideStatus({
+            status: 'accepted',
+            driver: data.driverName,
+            driverSrc: data.driverSrc,
+            vehicleName: data.vehicleName,
+            plate: data.vehiclePlate,
+          })
+          break
+        case 'rideVehicleInfo':
+          // Update accepted ride with real-time vehicle info
+          setRideStatus((prev: any) => ({
+            status: 'accepted',
+            driver: data.driverName || prev?.driver,
+            driverSrc: prev?.driverSrc,
+            vehicleName: data.vehicleName,
+            plate: data.vehiclePlate,
+          }))
           break
         case 'rideRejected':
           setRideStatus({ status: 'rejected', reason: data.reason })

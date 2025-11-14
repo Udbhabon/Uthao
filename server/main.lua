@@ -220,8 +220,19 @@ RegisterNetEvent('qb-taxijob:server:RespondRideRequest', function(reqId, accept)
 
         if QbxTaxiDB and driverPlayer then QbxTaxiDB.acceptRide(reqId, driverPlayer) end
 
-    TriggerClientEvent('chat:addMessage', req.requester, { args = { '^2[qbx_taxijob]', ('%s accepted your ride.'):format(dname) } })
-    TriggerClientEvent('qb-taxijob:client:RideAssigned', req.requester, src, dname, req.coords)
+        -- Gather driver's current vehicle model hash and plate for UI display
+        local driverPed = GetPlayerPed(src)
+        local vehicle = GetVehiclePedIsIn(driverPed, false)
+        local modelHash = 0
+        local plate = ''
+        if vehicle ~= 0 then
+            modelHash = GetEntityModel(vehicle)
+            plate = GetVehicleNumberPlateText(vehicle) or ''
+        end
+
+        TriggerClientEvent('chat:addMessage', req.requester, { args = { '^2[qbx_taxijob]', ('%s accepted your ride.'):format(dname) } })
+        -- Extended payload: modelHash, plate (kept at the end for backward compatibility)
+        TriggerClientEvent('qb-taxijob:client:RideAssigned', req.requester, src, dname, req.coords, modelHash, plate)
     -- instruct driver to show pickup blip and start location updates
     TriggerClientEvent('qb-taxijob:client:ShowPickupBlip', src, req.coords)
 
@@ -317,8 +328,12 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
         timestamp = os.time()
     }
     
-    -- Determine autopay preference and possibly charge immediately
-    local autoPayEnabled = QbxTaxiDB and QbxTaxiDB.getAutoPayEnabled and QbxTaxiDB.getAutoPayEnabled(uid) or false
+    -- Determine autopay preference and possibly charge immediately (guarded)
+    local autoPayEnabled = false
+    if QbxTaxiDB and QbxTaxiDB.getAutoPayEnabled and uid then
+        local ok, res = pcall(QbxTaxiDB.getAutoPayEnabled, uid)
+        if ok and type(res) == 'boolean' then autoPayEnabled = res end
+    end
     local paidImmediate = false
     if autoPayEnabled and passengerPlayer and driverPlayer and amount > 0 then
         local removed = passengerPlayer.Functions and passengerPlayer.Functions.RemoveMoney and passengerPlayer.Functions.RemoveMoney('bank', amount, 'taxi-fare-autopay-immediate')
@@ -624,6 +639,23 @@ local function startRideLogic(src)
         dname = (ci.firstname and ci.lastname) and (ci.firstname .. ' ' .. ci.lastname) or (driver.PlayerData.name or 'unknown')
     end
     TriggerClientEvent('chat:addMessage', passengerSource, { args = { '^2[qbx_taxijob]', ('Your ride with %s has started.'):format(dname) } })
+    
+    -- Send current vehicle details to passenger so their tablet shows real model name and plate
+    do
+        local vehicle = GetVehiclePedIsIn(ped, false)
+        local modelHash, plate = 0, 'UNKNOWN'
+        if vehicle ~= 0 then
+            modelHash = GetEntityModel(vehicle)
+            local ptxt = GetVehicleNumberPlateText(vehicle)
+            if ptxt and ptxt ~= '' then plate = ptxt end
+        end
+        TriggerClientEvent('qbx_taxijob:client:RideVehicleInfo', passengerSource, {
+            driverSrc = src,
+            driverName = dname,
+            modelHash = modelHash,
+            plate = plate
+        })
+    end
     
     return true, 'Ride started. Meter running.'
 end

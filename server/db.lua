@@ -11,6 +11,26 @@ local DB = {
 -- oxmysql global shortcut for static analysis
 local MySQL = MySQL
 
+-- Ensure taxi_users.autopay_enabled column exists (idempotent)
+local function ensureAutopayColumn()
+    local ok, exists = pcall(function()
+        return MySQL.scalar.await(
+            'SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+            { 'taxi_users', 'autopay_enabled' }
+        )
+    end)
+    if ok then
+        exists = tonumber(exists) or 0
+        if exists == 0 then
+            print('[qbx_taxijob] [DB] Adding taxi_users.autopay_enabled column (auto)')
+            MySQL.raw.execute('ALTER TABLE taxi_users ADD COLUMN autopay_enabled TINYINT(1) NOT NULL DEFAULT 0')
+        end
+    else
+        -- Silently continue; fallback logic in callers will assume disabled
+        print('[qbx_taxijob] [DB] Warning: failed to check columns for taxi_users.autopay_enabled')
+    end
+end
+
 -- Utilities to extract IDs and names from qbx_core player
 local function getCitizenId(player)
     return player and player.PlayerData and player.PlayerData.citizenid or nil
@@ -33,15 +53,8 @@ function DB.init()
     CreateThread(function()
         Wait(1000) -- Wait for oxmysql to be ready
         DB.checkTables()
-        -- Ensure optional columns exist
-        local exists = MySQL.scalar.await(
-            'SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
-            { 'taxi_users', 'autopay_enabled' }
-        )
-        if exists == 0 then
-            print('[qbx_taxijob] [DB] Adding taxi_users.autopay_enabled column')
-            MySQL.raw.execute('ALTER TABLE taxi_users ADD COLUMN autopay_enabled TINYINT(1) NOT NULL DEFAULT 0')
-        end
+        -- Ensure optional columns exist at startup as well
+        ensureAutopayColumn()
     end)
 end
 
@@ -85,6 +98,7 @@ function DB.upsertUserFromPlayer(player)
     if existing > 0 then
         MySQL.update.await('UPDATE taxi_users SET name = ?, phone = ? WHERE citizenid = ?', { name, phone, uid })
     else
+        ensureAutopayColumn()
         MySQL.insert.await('INSERT INTO taxi_users (citizenid, name, phone, autopay_enabled) VALUES (?, ?, ?, 0)', { uid, name, phone })
     end
 end
@@ -96,6 +110,7 @@ end
 function DB.setAutoPayEnabled(user_id, enabled)
     if not user_id then return false end
     local val = enabled and 1 or 0
+    ensureAutopayColumn()
     local existing = MySQL.scalar.await('SELECT COUNT(*) FROM taxi_users WHERE citizenid = ?', { user_id })
     if existing == 0 then
         MySQL.insert.await('INSERT INTO taxi_users (citizenid, autopay_enabled) VALUES (?, ?)', { user_id, val })
@@ -107,7 +122,22 @@ end
 
 function DB.getAutoPayEnabled(user_id)
     if not user_id then return false end
-    local val = MySQL.scalar.await('SELECT autopay_enabled FROM taxi_users WHERE citizenid = ? LIMIT 1', { user_id })
+    ensureAutopayColumn()
+    local ok, val = pcall(function()
+        return MySQL.scalar.await('SELECT autopay_enabled FROM taxi_users WHERE citizenid = ? LIMIT 1', { user_id })
+    end)
+    if not ok then
+        -- If the column truly doesn't exist yet, attempt to create then retry once
+        ensureAutopayColumn()
+        local retryOk, retryVal = pcall(function()
+            return MySQL.scalar.await('SELECT autopay_enabled FROM taxi_users WHERE citizenid = ? LIMIT 1', { user_id })
+        end)
+        if retryOk then
+            return (tonumber(retryVal) or 0) == 1
+        else
+            return false
+        end
+    end
     return (tonumber(val) or 0) == 1
 end
 

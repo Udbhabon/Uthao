@@ -29,6 +29,8 @@ interface RideStatusUpdate {
   driverName?: string
   driverCid?: string
   rideId?: string
+  vehicleName?: string
+  plate?: string
 }
 
 interface Props {
@@ -50,7 +52,7 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'debit' | 'cash'>('debit')
   const [pickupLocation, setPickupLocation] = useState('Current Location')
   const [bookingMessage, setBookingMessage] = useState('')
-  const [assignedDriver, setAssignedDriver] = useState<{name: string, src: number} | null>(null)
+  const [assignedDriver, setAssignedDriver] = useState<{name: string, src: number, vehicleName?: string, plate?: string} | null>(null)
   const [rideFare, setRideFare] = useState<number>(0)
   const [rideDriverName, setRideDriverName] = useState<string>('Driver')
   const [rideDriverCid, setRideDriverCid] = useState<string>('')
@@ -75,18 +77,24 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
 
   // Handle ride status updates from server
   React.useEffect(() => {
-    if (rideStatusUpdate && onRideStatusHandled) {
+      if (rideStatusUpdate && onRideStatusHandled) {
       if (rideStatusUpdate.status === 'accepted') {
         setRideStatus('matched')
         // Ensure we only set primitive values, not objects
-        const driverName = typeof rideStatusUpdate.driver === 'string' ? rideStatusUpdate.driver : 'Driver'
+          const rawName = (rideStatusUpdate.driverName || rideStatusUpdate.driver || 'Driver') as any
+          let driverName = typeof rawName === 'string' ? rawName : 'Driver'
+          if (typeof driverName === 'string' && driverName.toLowerCase().includes('table:')) {
+            driverName = 'Driver'
+          }
         const driverSrc = typeof rideStatusUpdate.driverSrc === 'number' ? rideStatusUpdate.driverSrc : 0
         // Reset completion guard for new ride lifecycle
         handledCompletionRef.current = false
         
         setAssignedDriver({
           name: driverName,
-          src: driverSrc
+          src: driverSrc,
+          vehicleName: rideStatusUpdate.vehicleName,
+          plate: rideStatusUpdate.plate
         })
         onRideStatusHandled() // Clear non-completed statuses
       } else if (rideStatusUpdate.status === 'rejected') {
@@ -161,8 +169,8 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
     rating: 4.9,
     trips: 1243,
     profilePic: 'https://avatar.iran.liara.run/public/boy',
-    vehicle: 'Toyota Camry 2022',
-    licensePlate: 'ABC 1234',
+    vehicle: assignedDriver?.vehicleName || 'Taxi Vehicle',
+    licensePlate: assignedDriver?.plate || 'UNKNOWN',
     eta: '3 min'
   }
   const fareBreakdown = { baseFare: 8.50, distance: 12.30, surge: 2.50, discount: -3.00, total: 20.30 }
@@ -401,8 +409,6 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
           </div>
         </div>
       </div>
-
-      <button onClick={() => setRideStatus('payment')} className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 rounded-xl font-bold text-base hover:shadow-lg hover:shadow-cyan-500/50 transition-all">Simulate Ride Completed</button>
     </div>
   )
 

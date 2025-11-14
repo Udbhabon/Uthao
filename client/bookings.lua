@@ -128,7 +128,7 @@ RegisterNetEvent('qb-taxijob:client:ClearRideBlips', function()
 end)
 
 
-RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driverSrc, driverName, coords)
+RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driverSrc, driverName, coords, modelHash, plate)
     exports.qbx_core:Notify(('Driver %s is on the way to your location'):format(driverName or 'a driver'), 'success')
     CurrentAssignedDriver = driverSrc
     if coords then

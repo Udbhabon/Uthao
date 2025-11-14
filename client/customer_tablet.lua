@@ -101,12 +101,36 @@ RegisterNetEvent('qbx_taxijob:client:UpdateOnlineDrivers', function()
 end)
 
 -- Handle ride assignment (driver accepted)
-RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driverSrc, driverName, coords)
+RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driverSrc, driverName, coords, modelHash, plate)
+    -- Sanitize driver name if a bad value like "table: 0x..." slips through
+    local safeName = 'Driver'
+    if type(driverName) == 'string' and not string.find(driverName, 'table:') then
+        safeName = driverName
+    end
+
+    -- Derive a nice vehicle display name from model hash if provided
+    local vehicleName = 'Taxi Vehicle'
+    if type(modelHash) == 'number' and modelHash ~= 0 then
+        local displayKey = GetDisplayNameFromVehicleModel(modelHash)
+        if displayKey and displayKey ~= '' then
+            local label = GetLabelText(displayKey)
+            if label and label ~= 'NULL' then
+                vehicleName = label
+            else
+                vehicleName = displayKey
+            end
+        end
+    end
+
+    local vehiclePlate = type(plate) == 'string' and plate or 'UNKNOWN'
+
     if customerTabletOpen then
         SendNUIMessage({
             action = 'rideAccepted',
-            driverName = tostring(driverName or 'Driver'),
-            driverSrc = tonumber(driverSrc) or 0
+            driverName = tostring(safeName or 'Driver'),
+            driverSrc = tonumber(driverSrc) or 0,
+            vehicleName = vehicleName,
+            vehiclePlate = vehiclePlate
         })
     end
     exports.qbx_core:Notify(('Driver %s is on the way to your location'):format(driverName or 'a driver'), 'success')
@@ -122,6 +146,34 @@ RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driver
         AddTextComponentSubstringPlayerName('Pickup Location')
         EndTextCommandSetBlipName(RequesterPickupBlip)
     end
+end)
+
+-- Ride started: server pushes actual vehicle model/plate; forward to NUI
+RegisterNetEvent('qbx_taxijob:client:RideVehicleInfo', function(data)
+    local modelHash = data and data.modelHash or 0
+    local plate = (data and data.plate) or 'UNKNOWN'
+    local driverName = (data and data.driverName) or 'Driver'
+
+    local vehicleName = 'Taxi Vehicle'
+    if type(modelHash) == 'number' and modelHash ~= 0 then
+        local displayKey = GetDisplayNameFromVehicleModel(modelHash)
+        if displayKey and displayKey ~= '' then
+            local label = GetLabelText(displayKey)
+            if label and label ~= 'NULL' then
+                vehicleName = label
+            else
+                vehicleName = displayKey
+            end
+        end
+    end
+
+    -- Always send to NUI; UI will update whether tablet is open or not
+    SendNUIMessage({
+        action = 'rideVehicleInfo',
+        driverName = tostring(driverName or 'Driver'),
+        vehicleName = vehicleName,
+        vehiclePlate = tostring(plate or 'UNKNOWN')
+    })
 end)
 
 -- Handle all drivers busy

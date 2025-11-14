@@ -406,54 +406,54 @@ export const DriverTablet: React.FC<Props> = ({ visible, onClose, acceptedRide }
     
     return (
       <div className="h-full flex flex-col items-center justify-center">
-        <div className="bg-white/5 rounded-3xl p-6 border border-white/10 max-w-xl w-full">
-          <div className="text-center mb-6">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mx-auto mb-4">
-              <Check className="w-10 h-10 text-white" />
+        <div className="bg-white/5 rounded-2xl p-4 border border-white/10 max-w-md w-full">
+          <div className="text-center mb-4">
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mx-auto mb-3">
+              <Check className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Ride Completed!</h1>
-            <p className="text-gray-400">Great job on this trip</p>
+            <h1 className="text-2xl font-bold text-white mb-1">Ride Completed</h1>
+            <p className="text-gray-400 text-sm">Great job on this trip</p>
           </div>
-          <div className="bg-black/20 rounded-2xl p-6 border border-white/5 mb-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-black/20 rounded-xl p-4 border border-white/5 mb-4">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
-                <img src={selectedRide?.avatar} alt={selectedRide?.passenger} className="w-14 h-14 rounded-2xl object-cover" />
+                <img src={selectedRide?.avatar} alt={selectedRide?.passenger} className="w-12 h-12 rounded-xl object-cover" />
                 <div>
-                  <h2 className="text-white font-bold text-lg">{selectedRide?.passenger}</h2>
-                  <p className="text-gray-400 text-sm">Passenger</p>
+                  <h2 className="text-white font-semibold text-base">{selectedRide?.passenger}</h2>
+                  <p className="text-gray-400 text-xs">Passenger</p>
                 </div>
               </div>
             </div>
             {distance > 0 && (
-              <div className="mb-4 pb-4 border-b border-white/10">
+              <div className="mb-3 pb-3 border-b border-white/10">
                 <div className="flex items-center gap-2">
                   <Navigation className="w-4 h-4 text-teal-400" />
-                  <span className="text-gray-400 text-sm">Distance Traveled:</span>
-                  <span className="text-white font-semibold">{distance.toFixed(2)} km</span>
+                  <span className="text-gray-400 text-xs">Distance Traveled:</span>
+                  <span className="text-white font-semibold text-sm">{distance.toFixed(2)} km</span>
                 </div>
               </div>
             )}
-            <div className="border-t border-white/10 pt-4 space-y-3">
-              <div className="flex items-center justify-between">
+            <div className="border-t border-white/10 pt-3 space-y-2">
+              <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-400">Base Fare</span>
                 <span className="text-white font-semibold">${baseFare.toFixed(2)}</span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-400">Service Fee</span>
                 <span className="text-white font-semibold">${serviceFee.toFixed(2)}</span>
               </div>
-              <div className="border-t border-white/10 pt-3 mt-3">
+              <div className="border-t border-white/10 pt-2 mt-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-white font-bold text-xl">Total Fare</span>
-                  <span className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">
+                  <span className="text-white font-bold text-lg">Total Fare</span>
+                  <span className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">
                     ${totalFare.toFixed(2)}
                   </span>
                 </div>
               </div>
             </div>
           </div>
-          <button onClick={handlePaymentComplete} className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-5 rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/30 text-lg">
-            <DollarSign className="w-5 h-5" />
+          <button onClick={handlePaymentComplete} className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-3 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 text-base">
+            <DollarSign className="w-4 h-4" />
             Paid by Customer
           </button>
         </div>
