@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS `taxi_vehicles` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `plate` VARCHAR(20) NOT NULL UNIQUE,
     `model` VARCHAR(50) NOT NULL,
+    `vehicle_type` ENUM('rented','own') NOT NULL DEFAULT 'own',
     `driver_cid` VARCHAR(50),
     `location` VARCHAR(100),
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

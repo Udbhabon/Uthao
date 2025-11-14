@@ -152,10 +152,12 @@ export const DriverTablet: React.FC<Props> = ({ visible, onClose, acceptedRide }
   }
   
   const handlePaymentComplete = () => {
-    setCurrentView('accepted') // Changed from 'dashboard' to 'accepted'
+    // Clear local state and close NUI to release focus
+    setCurrentView('accepted')
     setRideStartTime(null)
-    setSelectedRide(null) // Clear ride data
-    setCompletedFare(null) // Clear fare data
+    setSelectedRide(null)
+    setCompletedFare(null)
+    onClose() // App will send focus-release NUI messages
   }
 
   // Fully unmount the UI when not visible to avoid leftover overlay
@@ -460,9 +462,9 @@ export const DriverTablet: React.FC<Props> = ({ visible, onClose, acceptedRide }
   }
 
   const ProfileView = () => {
-    const displayRating = driverStats?.rating || driverProfile.rating
-    const displayTotalRides = driverStats?.totalRides || driverProfile.totalRides
-    const displayTodayEarnings = driverStats?.todayEarnings || driverProfile.todayEarnings
+  const displayRating = Number(driverStats?.rating ?? driverProfile.rating)
+  const displayTotalRides = Number(driverStats?.totalRides ?? driverProfile.totalRides)
+  const displayTodayEarnings = Number(driverStats?.todayEarnings ?? driverProfile.todayEarnings)
     const recentReviews = driverStats?.recentReviews || []
     const ratingsBreakdown = driverStats?.ratingsBreakdown || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
 

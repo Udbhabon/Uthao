@@ -83,6 +83,7 @@ export default function App() {
   const [acceptedRide, setAcceptedRide] = useState<any>(null)
 
   const [rideStatus, setRideStatus] = useState<any>(null)
+  const [paymentResult, setPaymentResult] = useState<any>(null)
 
   useEffect(() => {
     const onMessage = (e: MessageEvent<any>) => {
@@ -115,7 +116,18 @@ export default function App() {
           break
         case 'rideCompleted':
           console.log('[qbx_taxijob] [REACT] Ride completed:', data)
-          setRideStatus({ status: 'completed', fare: data.fare, paid: data.paid, driverName: data.driverName })
+          setRideStatus({
+            status: 'completed',
+            fare: data.fare,
+            paid: data.paid,
+            driverName: data.driverName,
+            driverCid: data.driverCid,
+            rideId: data.rideId,
+          })
+          break
+        case 'paymentProcessed':
+          // Forward payment result to CustomerTablet
+          setPaymentResult({ paid: !!data.paid, amount: Number(data.amount || 0), method: data.method === 'cash' ? 'cash' : 'debit' })
           break
       }
     }
@@ -133,6 +145,9 @@ export default function App() {
     try { await nuiSend('closeCustomerTablet') } catch {}
     try { await nuiSend('customerTablet:close') } catch {}
     setCustomerTabletVisible(false)
+    // Defensive: clear any persisted ride/payment state to avoid stale UI on reopen
+    setRideStatus(null)
+    setPaymentResult(null)
   }
 
   // Allow ESC to close the tablet and release focus
@@ -175,12 +190,11 @@ export default function App() {
         customerProfile={customerProfile}
         rideStatusUpdate={rideStatus}
         onRideStatusHandled={() => {
-          // Only clear rideStatus if it's NOT a completed status
-          // Keep completed status so it persists when tablet reopens
-          if (rideStatus && rideStatus.status !== 'completed') {
-            setRideStatus(null)
-          }
+          // Always clear rideStatus when child indicates it's handled
+          setRideStatus(null)
         }}
+        paymentResult={paymentResult}
+        onPaymentResultHandled={() => setPaymentResult(null)}
       />
       <Toaster />
     </>

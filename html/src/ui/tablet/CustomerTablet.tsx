@@ -37,9 +37,11 @@ interface Props {
   customerProfile?: CustomerProfile | null
   rideStatusUpdate?: RideStatusUpdate | null
   onRideStatusHandled?: () => void
+  paymentResult?: { paid: boolean; method: 'cash' | 'debit'; amount: number } | null
+  onPaymentResultHandled?: () => void
 }
 
-export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers, customerProfile: liveProfile, rideStatusUpdate, onRideStatusHandled }) => {
+export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers, customerProfile: liveProfile, rideStatusUpdate, onRideStatusHandled, paymentResult, onPaymentResultHandled }) => {
   const [activeSection, setActiveSection] = useState<'home' | 'payment' | 'safety' | 'support' | 'settings'>('home')
   const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'matched' | 'in-progress' | 'payment' | 'completed'>('idle')
   const [rating, setRating] = useState(0)
@@ -53,6 +55,7 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   const [rideDriverCid, setRideDriverCid] = useState<string>('')
   const [rideId, setRideId] = useState<string>('')
   const [paymentProcessing, setPaymentProcessing] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
   
   // Track if we've handled a completed status to avoid re-processing
   const handledCompletionRef = React.useRef<boolean>(false)
@@ -65,6 +68,8 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         // Ensure we only set primitive values, not objects
         const driverName = typeof rideStatusUpdate.driver === 'string' ? rideStatusUpdate.driver : 'Driver'
         const driverSrc = typeof rideStatusUpdate.driverSrc === 'number' ? rideStatusUpdate.driverSrc : 0
+        // Reset completion guard for new ride lifecycle
+        handledCompletionRef.current = false
         
         setAssignedDriver({
           name: driverName,
@@ -88,6 +93,7 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         setRideDriverCid(rideStatusUpdate.driverCid || '')
         setRideId(rideStatusUpdate.rideId || '')
         setRideStatus('payment')
+  setPaymentError(null)
         
         // Mark as handled so we don't process it again if tablet reopens
         handledCompletionRef.current = true
@@ -97,6 +103,29 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
       }
     }
   }, [rideStatusUpdate, onRideStatusHandled, rideStatus])
+
+  // React to async payment results from server
+  React.useEffect(() => {
+    if (!paymentResult) return
+    // Consume the event right away
+    onPaymentResultHandled && onPaymentResultHandled()
+
+    // Stop processing spinner either way
+    setPaymentProcessing(false)
+
+    if (paymentResult.paid) {
+      // Advance to rating screen on success
+      setPaymentError(null)
+      setRideStatus('completed')
+    } else {
+      // Show inline error; if cash, explain insufficient funds
+      if (paymentResult.method === 'cash') {
+        setPaymentError(`Cash payment failed: insufficient cash for $${rideFare.toFixed(2)} fare. Please select Debit Card.`)
+      } else {
+        setPaymentError('Payment failed. Please try again or use another method.')
+      }
+    }
+  }, [paymentResult])
 
   if (!visible) return null
 
@@ -377,24 +406,11 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         })
       })
       
-      if (confirmed) {
-        // On successful payment, move to rating screen
-        setTimeout(() => {
-          setRideStatus('completed')
-          setPaymentProcessing(false)
-        }, 1000)
-      } else {
-        // On cancel, go back to home and reset completion tracking
-        setTimeout(() => {
-          setRideStatus('idle')
-          setActiveSection('home')
-          setPaymentProcessing(false)
-          handledCompletionRef.current = false // Reset for next ride
-        }, 500)
-      }
+      // Do not advance here; wait for async PaymentProcessed from server
     } catch (err) {
       console.error('Failed to process payment:', err)
       setPaymentProcessing(false)
+      setPaymentError('Payment request failed. Please try again.')
     }
   }
 
@@ -426,7 +442,7 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
           <div className="space-y-4 mb-4">
             <h3 className="text-lg font-bold text-white mb-4">Select Payment Method</h3>
             <button 
-              onClick={() => setSelectedPaymentMethod('debit')} 
+              onClick={() => { setSelectedPaymentMethod('debit'); setPaymentError(null) }} 
               disabled={paymentProcessing}
               className={`w-full glass-card p-4 transition-all ${selectedPaymentMethod === 'debit' ? 'border-2 border-cyan-500 bg-cyan-500/20' : 'border border-white/10 hover:border-cyan-500/50'} ${paymentProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -439,9 +455,9 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
               </div>
             </button>
             <button 
-              onClick={() => setSelectedPaymentMethod('cash')} 
+              onClick={() => { setSelectedPaymentMethod('cash'); setPaymentError(null) }} 
               disabled={paymentProcessing}
-              className={`w-full glass-card p-4 transition-all ${selectedPaymentMethod === 'cash' ? 'border-2 border-cyan-500 bg-cyan-500/20' : 'border border-white/10 hover:border-cyan-500/50'} ${paymentProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`w-full glass-card p-4 transition-all ${selectedPaymentMethod === 'cash' ? (paymentError ? 'border-2 border-red-500 bg-red-500/20' : 'border-2 border-cyan-500 bg-cyan-500/20') : 'border border-white/10 hover:border-cyan-500/50'} ${paymentProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -451,20 +467,19 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
                 <div className={`w-5 h-5 rounded-full border-2 ${selectedPaymentMethod === 'cash' ? 'border-cyan-500 bg-cyan-500' : 'border-white/20'}`} />
               </div>
             </button>
+            {paymentError && (
+              <div className="w-full glass-card p-3 mt-2 border border-red-500/60 bg-red-500/10 text-red-300 text-sm flex items-start gap-2">
+                <AlertTriangle size={16} className="mt-0.5" />
+                <span>{paymentError}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3">
             <button 
-              onClick={() => handlePayment(false)} 
-              disabled={paymentProcessing}
-              className="flex-1 bg-red-600/80 hover:bg-red-600 text-white py-3 rounded-xl font-bold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-            <button 
               onClick={() => handlePayment(true)} 
               disabled={paymentProcessing}
-              className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 rounded-xl font-bold text-base hover:shadow-lg hover:shadow-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 text-white py-3 rounded-xl font-bold text-base hover:shadow-lg hover:shadow-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {paymentProcessing ? 'Processing...' : `Pay $${rideFare.toFixed(2)}`}
             </button>
@@ -496,8 +511,10 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         setRideId('')
         setPaymentProcessing(false)
         setSelectedPaymentMethod('debit')
-        handledCompletionRef.current = false
+  // Keep completion guard TRUE after finishing payment/rating so reopening tablet doesn't re-trigger completed screen.
         console.log('[qbx_taxijob] [CustomerTablet] Closing tablet without review submission')
+        // Clear persisted completed status in parent so tablet opens fresh next time
+        onRideStatusHandled && onRideStatusHandled()
         onClose()
         return
       }
@@ -522,6 +539,8 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         setSelectedPaymentMethod('debit')
         handledCompletionRef.current = false
         console.log('[qbx_taxijob] [CustomerTablet] Closing tablet without review submission (missing data)')
+        // Clear persisted completed status in parent so tablet opens fresh next time
+        onRideStatusHandled && onRideStatusHandled()
         onClose()
         return
       }
@@ -574,6 +593,9 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         setSelectedPaymentMethod('debit')
         handledCompletionRef.current = false
         
+        // Clear persisted completed status in parent so tablet opens fresh next time
+        onRideStatusHandled && onRideStatusHandled()
+
         // Close the NUI tablet
         console.log('[qbx_taxijob] [CustomerTablet] Closing tablet after review submission')
         onClose()

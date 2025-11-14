@@ -101,22 +101,24 @@ function DB.updateDriverStatusFromPlayer(player, onDuty)
     end
 end
 
-function DB.assignVehicleToDriver(player, plate, model)
+function DB.assignVehicleToDriver(player, plate, model, vehicle_type)
     local did = getCitizenId(player)
     if not did or not plate then return end
-    
+
+    vehicle_type = (vehicle_type == 'rented' or vehicle_type == 'own') and vehicle_type or 'own'
+
     local existing = MySQL.scalar.await('SELECT COUNT(*) FROM taxi_vehicles WHERE plate = ?', { plate })
-    
+
     if existing > 0 then
-        MySQL.update.await('UPDATE taxi_vehicles SET driver_cid = ?, model = ? WHERE plate = ?', {
-            did, model, plate
+        MySQL.update.await('UPDATE taxi_vehicles SET driver_cid = ?, model = ?, vehicle_type = ? WHERE plate = ?', {
+            did, model, vehicle_type, plate
         })
     else
-        MySQL.insert.await('INSERT INTO taxi_vehicles (plate, model, driver_cid) VALUES (?, ?, ?)', {
-            plate, model, did
+        MySQL.insert.await('INSERT INTO taxi_vehicles (plate, model, vehicle_type, driver_cid) VALUES (?, ?, ?, ?)', {
+            plate, model, vehicle_type, did
         })
     end
-    
+
     -- Update driver's vehicle info
     MySQL.update.await('UPDATE taxi_drivers SET vehicle_model = ?, vehicle_plate = ? WHERE citizenid = ?', {
         model, plate, did

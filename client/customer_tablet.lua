@@ -133,7 +133,9 @@ RegisterNetEvent('qbx_taxijob:client:RideCompleted', function(data)
         action = 'rideCompleted',
         fare = fare,
         paid = paid,
-        driverName = driverName
+        driverName = driverName,
+        driverCid = data.driverCid,
+        rideId = data.rideId
     })
     print('[qbx_taxijob] [CLIENT] Sent ride completed to NUI (will update when tablet opens if not already open)')
     
@@ -177,6 +179,19 @@ RegisterNUICallback('customer:confirmPayment', function(data, cb)
     })
     
     cb('ok')
+end)
+
+-- Receive payment processed result from server and forward to NUI
+RegisterNetEvent('qbx_taxijob:client:PaymentProcessed', function(result)
+    local paid = result and result.paid or false
+    local amount = result and result.amount or 0
+    local method = result and result.method or 'debit'
+    SendNUIMessage({
+        action = 'paymentProcessed',
+        paid = paid,
+        amount = amount,
+        method = method
+    })
 end)
 
 -- Submit review from customer tablet UI

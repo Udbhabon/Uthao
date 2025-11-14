@@ -1,4 +1,10 @@
 return {
+    payment = {
+        -- Seconds to wait before auto-paying an unpaid ride (no polling; single server timer)
+        autoPayTimeout = 600, -- 10 minutes by default
+        -- Extra fine charged to passenger on auto-pay (added to fare, not given to driver)
+        autoPayFine = 250, -- dollars
+    },
     npcLocations = {
         takeLocations = {
             vec4(257.61, -380.57, 44.71, 340.5),

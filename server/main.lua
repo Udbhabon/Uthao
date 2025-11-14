@@ -1,3 +1,8 @@
+---@diagnostic disable: undefined-global
+-- Framework globals (defined by ox_lib / qbx_core environment)
+local lib = lib
+local qbx = qbx
+
 local sharedConfig = require 'config.shared'
 local ITEMS = exports.ox_inventory:Items()
 -- attempt to read client config for shared constants (fallback to defaults)
@@ -308,6 +313,7 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
         uid = uid,
         did = did,
         ride_id = ride_id,
+        passengerSrc = requester,
         timestamp = os.time()
     }
     
@@ -324,6 +330,88 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
     -- Notify driver that ride is complete, waiting for passenger payment
     TriggerClientEvent('chat:addMessage', requester, { args = { '^2[qbx_taxijob]', ('Your ride is complete. Fare: $%s'):format(tostring(amount)) } })
     TriggerClientEvent('chat:addMessage', src, { args = { '^3[qbx_taxijob]', 'Ride completed. Waiting for passenger payment...' } })
+
+    -- Schedule auto-pay with fine if passenger does not pay within configured timeout (no polling)
+    local timeoutSec = (sharedConfig and sharedConfig.payment and sharedConfig.payment.autoPayTimeout) or 600
+    local fineAmount = (sharedConfig and sharedConfig.payment and sharedConfig.payment.autoPayFine) or 0
+    SetTimeout(timeoutSec * 1000, function()
+        if not pendingPayments then return end
+        local p = pendingPayments[requester]
+        -- If payment already processed or different ride now, abort
+        if not p or p.ride_id ~= ride_id then return end
+
+        local totalCharge = (p.amount or 0) + (fineAmount or 0)
+
+        -- Attempt to get up-to-date player refs (avoid storing stale objects)
+        local passengerSrcNow = p.passengerSrc
+        local driverSrcNow = p.driverSrc
+        local passengerP = exports.qbx_core and exports.qbx_core:GetPlayer(passengerSrcNow) or nil
+        local driverP = exports.qbx_core and exports.qbx_core:GetPlayer(driverSrcNow) or nil
+
+        local paidAuto = false
+        if passengerP and totalCharge > 0 then
+            local removed = passengerP.Functions and passengerP.Functions.RemoveMoney and passengerP.Functions.RemoveMoney('bank', totalCharge, 'taxi-fare-autopay')
+            if removed then
+                paidAuto = true
+                -- Credit driver with the original fare amount (fine is not paid to driver)
+                if driverP and driverP.Functions and driverP.Functions.AddMoney then
+                    driverP.Functions.AddMoney('bank', p.amount, 'taxi-fare-received-autopay')
+                end
+                if QbxTaxiDB and p.uid and p.did and p.ride_id then
+                    QbxTaxiDB.addTransaction(p.uid, p.did, p.ride_id, p.amount, 'paid_auto')
+                end
+                -- Notify passenger and driver (if online)
+                if passengerSrcNow then
+                    lib.notify(passengerSrcNow, {
+                        title = 'Auto Payment Processed',
+                        description = (fineAmount > 0)
+                            and (('$%.2f fare + $%.2f fine auto-charged from bank'):format(p.amount, fineAmount))
+                            or (('$%.2f fare auto-charged from bank'):format(p.amount)),
+                        type = 'success'
+                    })
+                    TriggerClientEvent('qbx_taxijob:client:PaymentProcessed', passengerSrcNow, {
+                        paid = true,
+                        amount = p.amount,
+                        method = 'bank'
+                    })
+                end
+                if driverSrcNow then
+                    lib.notify(driverSrcNow, {
+                        title = 'Payment Received',
+                        description = (('$%.2f (auto-pay)'):format(p.amount)),
+                        type = 'success'
+                    })
+                end
+            else
+                -- Auto-pay failed (insufficient funds). Log and notify if online.
+                if QbxTaxiDB and p.uid and p.did and p.ride_id then
+                    QbxTaxiDB.addTransaction(p.uid, p.did, p.ride_id, p.amount, 'auto_failed')
+                end
+                if passengerSrcNow then
+                    lib.notify(passengerSrcNow, {
+                        title = 'Auto Payment Failed',
+                        description = 'Insufficient bank funds to auto-charge your fare.',
+                        type = 'error'
+                    })
+                    TriggerClientEvent('qbx_taxijob:client:PaymentProcessed', passengerSrcNow, {
+                        paid = false,
+                        amount = p.amount,
+                        method = 'bank'
+                    })
+                end
+                if driverSrcNow then
+                    lib.notify(driverSrcNow, {
+                        title = 'Passenger Auto Payment Failed',
+                        description = 'Passenger did not have enough funds for auto-pay.',
+                        type = 'warning'
+                    })
+                end
+            end
+        end
+
+        -- Regardless of success or fail, clear pending record to prevent repeated attempts
+        pendingPayments[requester] = nil
+    end)
 end)
 
 -- Process payment from customer tablet UI (replaces ox_lib ConfirmFare callback)
@@ -331,48 +419,36 @@ RegisterNetEvent('qbx_taxijob:server:ProcessPayment', function(data)
     local src = source
     local method = data.method or 'debit'
     local confirmed = data.confirmed or false
-    
+
     print(('[qbx_taxijob] [SERVER] ProcessPayment from %d - Method: %s, Confirmed: %s'):format(src, method, tostring(confirmed)))
-    
-    -- Get pending payment data
+
     if not pendingPayments then pendingPayments = {} end
     local payment = pendingPayments[src]
-    
     if not payment then
         print(('[qbx_taxijob] [SERVER] No pending payment found for passenger %d'):format(src))
         return
     end
-    
-    -- Clean up old pending payments (older than 5 minutes)
+
+    -- Expire very old pending records (>5 minutes) except the current one
     for passengerSrc, p in pairs(pendingPayments) do
-        if os.time() - p.timestamp > 300 then
+        if passengerSrc ~= src and os.time() - p.timestamp > 300 then
             pendingPayments[passengerSrc] = nil
-            print(('[qbx_taxijob] [SERVER] Cleaned up expired payment for passenger %d'):format(passengerSrc))
         end
     end
-    
-    local driverSrc = payment.driverSrc
-    local driverPlayer = payment.driverPlayer
+
+    local driverSrc       = payment.driverSrc
+    local driverPlayer    = payment.driverPlayer
     local passengerPlayer = payment.passengerPlayer
-    local amount = payment.amount
-    local driverName = payment.driverName
-    local uid = payment.uid
-    local did = payment.did
-    local ride_id = payment.ride_id
-    
-    -- Attempt payment if confirmed and valid players
+    local amount          = payment.amount
+    local uid             = payment.uid
+    local did             = payment.did
+    local ride_id         = payment.ride_id
+
     local paid = false
     if confirmed and driverPlayer and passengerPlayer and amount > 0 then
-        local pOK = false
-        
-        -- Use cash or bank based on method selection
         local account = (method == 'cash') and 'cash' or 'bank'
-        
-        if passengerPlayer.Functions and passengerPlayer.Functions.RemoveMoney then
-            pOK = passengerPlayer.Functions.RemoveMoney(account, amount, 'taxi-fare')
-        end
-        
-        if pOK then
+        local success = passengerPlayer.Functions and passengerPlayer.Functions.RemoveMoney and passengerPlayer.Functions.RemoveMoney(account, amount, 'taxi-fare') or false
+        if success then
             paid = true
             if driverPlayer.Functions and driverPlayer.Functions.AddMoney then
                 driverPlayer.Functions.AddMoney('bank', amount, 'taxi-fare-received')
@@ -380,51 +456,31 @@ RegisterNetEvent('qbx_taxijob:server:ProcessPayment', function(data)
             if QbxTaxiDB and uid and did and ride_id then
                 QbxTaxiDB.addTransaction(uid, did, ride_id, amount, 'paid')
             end
-            
-            -- Notify both parties of successful payment
             TriggerClientEvent('chat:addMessage', src, { args = { '^2[qbx_taxijob]', 'Payment processed successfully.' } })
             TriggerClientEvent('chat:addMessage', driverSrc, { args = { '^2[qbx_taxijob]', ('Fare received: $%s'):format(tostring(amount)) } })
-            
-            lib.notify(src, {
-                title = 'Payment Successful',
-                description = string.format('$%.2f paid via %s', amount, method == 'cash' and 'Cash' or 'Debit Card'),
-                type = 'success'
-            })
-            
-            lib.notify(driverSrc, {
-                title = 'Payment Received',
-                description = string.format('$%.2f from %s', amount, passengerPlayer.PlayerData.charinfo.firstname or 'Passenger'),
-                type = 'success'
-            })
+            lib.notify(src, { title='Payment Successful', description=('$%.2f paid via %s'):format(amount, method == 'cash' and 'Cash' or 'Debit Card'), type='success'})
+            lib.notify(driverSrc, { title='Payment Received', description=('$%.2f from passenger'):format(amount), type='success'})
         else
-            -- Payment failed
-            if QbxTaxiDB and uid and did and ride_id then
-                QbxTaxiDB.addTransaction(uid, did, ride_id, amount, 'failed')
-            end
-            
-            TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Payment failed - insufficient funds.' } })
-            TriggerClientEvent('chat:addMessage', driverSrc, { args = { '^1[qbx_taxijob]', 'Passenger payment failed.' } })
-            
-            lib.notify(src, {
-                title = 'Payment Failed',
-                description = 'Insufficient funds in your account',
-                type = 'error'
-            })
+            -- Insufficient funds; do NOT clear or log failed transaction yet
+            payment.attempts = (payment.attempts or 0) + 1
+            TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'Insufficient funds. Choose another method or wait for auto-pay.' } })
+            TriggerClientEvent('chat:addMessage', driverSrc, { args = { '^3[qbx_taxijob]', 'Passenger is selecting another payment method.' } })
+            lib.notify(src, { title='Insufficient Funds', description='Balance too low. Pick another method.', type='error'})
         end
     elseif not confirmed then
-        -- Payment cancelled by passenger
+        -- Optional future cancel path
         TriggerClientEvent('chat:addMessage', src, { args = { '^3[qbx_taxijob]', 'Payment cancelled.' } })
         TriggerClientEvent('chat:addMessage', driverSrc, { args = { '^3[qbx_taxijob]', 'Passenger cancelled payment.' } })
-        
         if QbxTaxiDB and uid and did and ride_id then
             QbxTaxiDB.addTransaction(uid, did, ride_id, amount, 'cancelled')
         end
+        pendingPayments[src] = nil
     end
-    
-    -- Clean up pending payment
-    pendingPayments[src] = nil
-    
-    -- Update passenger UI with payment result
+
+    if paid then
+        pendingPayments[src] = nil
+    end
+
     TriggerClientEvent('qbx_taxijob:client:PaymentProcessed', src, {
         paid = paid,
         amount = amount,
@@ -432,21 +488,14 @@ RegisterNetEvent('qbx_taxijob:server:ProcessPayment', function(data)
     })
 end)
 
--- Driver command to end ride: asks client to submit fare and stop meter
-RegisterCommand('endride', function(src)
-    if src == 0 then
-        print('[qbx_taxijob] /endride cannot be run from console')
-        return
-    end
-    local assign = activeAssignments[src]
-    if not assign then
-        TriggerClientEvent('chat:addMessage', src, { args = { '^1[qbx_taxijob]', 'No active ride to end.' } })
-        return
-    end
-    TriggerClientEvent('qbx_taxijob:client:EndRideCollectFare', src)
-end, false)
-
 -- Helper: find player source by citizenid
+---@diagnostic disable: undefined-global
+-- Safely reference framework globals to satisfy static analyzers
+-- Diagnostics & framework globals
+---@diagnostic disable: undefined-global
+local lib = lib -- ox_lib global provided by shared script
+local qbx = qbx -- qbx core helper (if exposed); kept for static analysis
+
 local function findSourceByCitizenId(citizenid)
     for _, id in ipairs(GetPlayers()) do
         local p = exports.qbx_core and exports.qbx_core:GetPlayer(tonumber(id)) or nil
@@ -456,6 +505,11 @@ local function findSourceByCitizenId(citizenid)
     end
     return nil
 end
+
+-- Legacy JSON ride debug (removed - migrated to MySQL). Keeping guarded stub for compatibility.
+--[[
+-- Legacy JSON debug removed (migrated to MySQL)
+]]
 
 -- Helper: allowed vehicle model check using client config if available
 local function isAllowedVehicleModel(modelHash)
@@ -616,7 +670,7 @@ lib.callback.register('qb-taxi:server:spawnTaxi', function(source, model, coords
     TriggerClientEvent('vehiclekeys:client:SetOwner', source, plate)
     if QbxTaxiDB then
         local p = exports.qbx_core and exports.qbx_core:GetPlayer(source) or nil
-        if p then QbxTaxiDB.assignVehicleToDriver(p, plate, model) end
+    if p then QbxTaxiDB.assignVehicleToDriver(p, plate, model, 'rented') end
     end
     return netId
 end)
@@ -835,26 +889,9 @@ lib.callback.register('qbx_taxijob:server:GetDriverStats', function(source)
         review.passengerName = QbxTaxiDB.getPassengerName and QbxTaxiDB.getPassengerName(review.user_id) or 'Unknown'
     end
     
-    -- Calculate completed rides count
-    local completedRides = 0
-    if QbxTaxiDB.data and QbxTaxiDB.data.rides then
-        for _, ride in pairs(QbxTaxiDB.data.rides) do
-            if ride.driver_id == driverCid and ride.status == 'completed' then
-                completedRides = completedRides + 1
-            end
-        end
-    end
-    
-    -- Calculate today's earnings
-    local todayEarnings = 0
-    local todayStart = os.time() - (os.time() % 86400) -- midnight today
-    if QbxTaxiDB.data and QbxTaxiDB.data.transactions then
-        for _, tx in ipairs(QbxTaxiDB.data.transactions) do
-            if tx.driver_id == driverCid and tx.payment_status == 'paid' and tx.ts >= todayStart then
-                todayEarnings = todayEarnings + (tx.amount or 0)
-            end
-        end
-    end
+    -- Completed rides & today's earnings via DB helpers (JSON-era fallback removed)
+    local completedRides = (QbxTaxiDB and QbxTaxiDB.countCompletedRides and QbxTaxiDB.countCompletedRides(driverCid)) or 0
+    local todayEarnings = (QbxTaxiDB and QbxTaxiDB.getTodayEarnings and QbxTaxiDB.getTodayEarnings(driverCid)) or 0
     
     print(('[qbx_taxijob] [DEBUG] Driver stats for %s: %.2f rating, %d reviews, %d rides'):format(
         driverCid, stats.average_rating, stats.total_reviews, completedRides
