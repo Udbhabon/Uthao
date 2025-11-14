@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { nuiSend } from '../../nui'
 import { Star, Phone, MessageCircle, Shield, Settings, HelpCircle, Clock, Car, DollarSign, User, Users, ChevronRight, Bell, CreditCard, Tag, AlertTriangle, MapPin } from 'lucide-react'
 
 interface Driver {
@@ -43,7 +44,7 @@ interface Props {
 
 export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers, customerProfile: liveProfile, rideStatusUpdate, onRideStatusHandled, paymentResult, onPaymentResultHandled }) => {
   const [activeSection, setActiveSection] = useState<'home' | 'payment' | 'safety' | 'support' | 'settings'>('home')
-  const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'matched' | 'in-progress' | 'payment' | 'completed'>('idle')
+  const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'matched' | 'in-progress' | 'payment' | 'completed' | 'rejected'>('idle')
   const [rating, setRating] = useState(0)
   const [autoPayEnabled, setAutoPayEnabled] = useState(true)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'debit' | 'cash'>('debit')
@@ -59,6 +60,18 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   
   // Track if we've handled a completed status to avoid re-processing
   const handledCompletionRef = React.useRef<boolean>(false)
+
+  // Sync autopay preference from client on mount
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const res: any = await nuiSend('customer:getAutopay')
+        if (res && typeof res.enabled === 'boolean') {
+          setAutoPayEnabled(!!res.enabled)
+        }
+      } catch {}
+    })()
+  }, [])
 
   // Handle ride status updates from server
   React.useEffect(() => {
@@ -92,8 +105,11 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         setRideDriverName(rideStatusUpdate.driverName || 'Driver')
         setRideDriverCid(rideStatusUpdate.driverCid || '')
         setRideId(rideStatusUpdate.rideId || '')
-        setRideStatus('payment')
-  setPaymentError(null)
+        // If the ride was auto-paid server-side, or the user has autopay enabled, skip payment UI
+        const paidImmediate = !!rideStatusUpdate.paid
+        const shouldSkipPayment = paidImmediate || !!autoPayEnabled
+        setRideStatus(shouldSkipPayment ? 'completed' : 'payment')
+        setPaymentError(null)
         
         // Mark as handled so we don't process it again if tablet reopens
         handledCompletionRef.current = true
@@ -102,7 +118,7 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         console.log('[qbx_taxijob] [CustomerTablet] Completion handled, status will persist')
       }
     }
-  }, [rideStatusUpdate, onRideStatusHandled, rideStatus])
+  }, [rideStatusUpdate, onRideStatusHandled, rideStatus, autoPayEnabled])
 
   // React to async payment results from server
   React.useEffect(() => {
@@ -821,7 +837,11 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
               <p className="text-sm text-gray-400">Automatically charge after rides</p>
             </div>
             <button 
-              onClick={() => setAutoPayEnabled(!autoPayEnabled)}
+              onClick={async () => {
+                const next = !autoPayEnabled
+                setAutoPayEnabled(next)
+                try { await nuiSend('customer:setAutopay', { enabled: next }) } catch {}
+              }}
               className={`w-16 h-8 rounded-full transition-all ${autoPayEnabled ? 'bg-cyan-600' : 'bg-gray-600'}`}
             >
               <div className={`w-6 h-6 rounded-full bg-white transition-all ${autoPayEnabled ? 'translate-x-9' : 'translate-x-1'}`}></div>

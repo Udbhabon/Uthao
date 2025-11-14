@@ -7,6 +7,10 @@ local DB = {
     driverActiveRide = {}, -- [driver_id=citizenid] = ride_id (in-memory cache)
 }
 
+---@diagnostic disable: undefined-global
+-- oxmysql global shortcut for static analysis
+local MySQL = MySQL
+
 -- Utilities to extract IDs and names from qbx_core player
 local function getCitizenId(player)
     return player and player.PlayerData and player.PlayerData.citizenid or nil
@@ -29,6 +33,15 @@ function DB.init()
     CreateThread(function()
         Wait(1000) -- Wait for oxmysql to be ready
         DB.checkTables()
+        -- Ensure optional columns exist
+        local exists = MySQL.scalar.await(
+            'SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+            { 'taxi_users', 'autopay_enabled' }
+        )
+        if exists == 0 then
+            print('[qbx_taxijob] [DB] Adding taxi_users.autopay_enabled column')
+            MySQL.raw.execute('ALTER TABLE taxi_users ADD COLUMN autopay_enabled TINYINT(1) NOT NULL DEFAULT 0')
+        end
     end)
 end
 
@@ -72,8 +85,30 @@ function DB.upsertUserFromPlayer(player)
     if existing > 0 then
         MySQL.update.await('UPDATE taxi_users SET name = ?, phone = ? WHERE citizenid = ?', { name, phone, uid })
     else
-        MySQL.insert.await('INSERT INTO taxi_users (citizenid, name, phone) VALUES (?, ?, ?)', { uid, name, phone })
+        MySQL.insert.await('INSERT INTO taxi_users (citizenid, name, phone, autopay_enabled) VALUES (?, ?, ?, 0)', { uid, name, phone })
     end
+end
+
+-- ============================================================================
+-- USER AUTOPAY PREFERENCE
+-- ============================================================================
+
+function DB.setAutoPayEnabled(user_id, enabled)
+    if not user_id then return false end
+    local val = enabled and 1 or 0
+    local existing = MySQL.scalar.await('SELECT COUNT(*) FROM taxi_users WHERE citizenid = ?', { user_id })
+    if existing == 0 then
+        MySQL.insert.await('INSERT INTO taxi_users (citizenid, autopay_enabled) VALUES (?, ?)', { user_id, val })
+    else
+        MySQL.update.await('UPDATE taxi_users SET autopay_enabled = ? WHERE citizenid = ?', { val, user_id })
+    end
+    return true
+end
+
+function DB.getAutoPayEnabled(user_id)
+    if not user_id then return false end
+    local val = MySQL.scalar.await('SELECT autopay_enabled FROM taxi_users WHERE citizenid = ? LIMIT 1', { user_id })
+    return (tonumber(val) or 0) == 1
 end
 
 -- ============================================================================

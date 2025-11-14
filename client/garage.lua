@@ -1,5 +1,9 @@
 -- Garage and parking zones for qb_taxijob
 
+---@diagnostic disable: undefined-global
+local lib = lib
+local QBX = QBX
+
 function setLocationsBlip()
     if not config.useBlips then return end
     if taxiBlip ~= nil then return end
@@ -49,9 +53,10 @@ function setupGarageZone()
         if garageZone then return end
     end
     if config.useTarget then
-        lib.requestModel(`a_m_m_indian_01`)
-        taxiPed = CreatePed(3, `a_m_m_indian_01`, 894.93, -179.12, 74.7 - 1.0, 237.09, false, true)
-        SetModelAsNoLongerNeeded(`a_m_m_indian_01`)
+        local model = joaat('a_m_m_indian_01')
+        lib.requestModel(model)
+        taxiPed = CreatePed(3, model, 894.93, -179.12, 74.7 - 1.0, 237.09, false, true)
+        SetModelAsNoLongerNeeded(model)
         SetBlockingOfNonTemporaryEvents(taxiPed, true)
         FreezeEntityPosition(taxiPed, true)
         SetEntityInvincible(taxiPed, true)

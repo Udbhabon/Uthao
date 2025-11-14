@@ -317,14 +317,32 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
         timestamp = os.time()
     }
     
-    -- Notify passenger to show payment screen in customer tablet (not ox_lib dialog)
+    -- Determine autopay preference and possibly charge immediately
+    local autoPayEnabled = QbxTaxiDB and QbxTaxiDB.getAutoPayEnabled and QbxTaxiDB.getAutoPayEnabled(uid) or false
+    local paidImmediate = false
+    if autoPayEnabled and passengerPlayer and driverPlayer and amount > 0 then
+        local removed = passengerPlayer.Functions and passengerPlayer.Functions.RemoveMoney and passengerPlayer.Functions.RemoveMoney('bank', amount, 'taxi-fare-autopay-immediate')
+        if removed then
+            paidImmediate = true
+            if driverPlayer.Functions and driverPlayer.Functions.AddMoney then
+                driverPlayer.Functions.AddMoney('bank', amount, 'taxi-fare-received-autopay')
+            end
+            if QbxTaxiDB and uid and did and ride_id then
+                QbxTaxiDB.addTransaction(uid, did, ride_id, amount, 'paid_auto')
+            end
+            -- Clear pending to avoid timeout auto-pay
+            pendingPayments[requester] = nil
+        end
+    end
+
+    -- Notify passenger with ride completion; mark paid if autopay processed
     TriggerClientEvent('qbx_taxijob:client:RideCompleted', requester, {
         fare = amount,
-        paid = false,  -- Payment pending, not processed yet
+        paid = paidImmediate,
         driverName = driverName,
-        driverCid = did,  -- Driver citizen ID for review submission
-        rideId = ride_id,  -- Ride ID for review submission
-        awaitingPayment = true  -- Signal that payment UI should be shown
+        driverCid = did,
+        rideId = ride_id,
+        awaitingPayment = not paidImmediate
     })
     
     -- Notify driver that ride is complete, waiting for passenger payment
@@ -412,6 +430,24 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
         -- Regardless of success or fail, clear pending record to prevent repeated attempts
         pendingPayments[requester] = nil
     end)
+end)
+-- Autopay preference APIs
+lib.callback.register('qbx_taxijob:server:GetAutoPayPreference', function(source)
+    local player = exports.qbx_core:GetPlayer(source)
+    if not player then return false end
+    local uid = player.PlayerData.citizenid
+    if not QbxTaxiDB or not QbxTaxiDB.getAutoPayEnabled then return false end
+    return QbxTaxiDB.getAutoPayEnabled(uid)
+end)
+
+RegisterNetEvent('qbx_taxijob:server:SetAutoPayPreference', function(enabled)
+    local src = source
+    local player = exports.qbx_core:GetPlayer(src)
+    if not player then return end
+    local uid = player.PlayerData.citizenid
+    if QbxTaxiDB and QbxTaxiDB.setAutoPayEnabled then
+        QbxTaxiDB.setAutoPayEnabled(uid, enabled and true or false)
+    end
 end)
 
 -- Process payment from customer tablet UI (replaces ox_lib ConfirmFare callback)
@@ -890,8 +926,8 @@ lib.callback.register('qbx_taxijob:server:GetDriverStats', function(source)
     end
     
     -- Completed rides & today's earnings via DB helpers (JSON-era fallback removed)
-    local completedRides = (QbxTaxiDB and QbxTaxiDB.countCompletedRides and QbxTaxiDB.countCompletedRides(driverCid)) or 0
-    local todayEarnings = (QbxTaxiDB and QbxTaxiDB.getTodayEarnings and QbxTaxiDB.getTodayEarnings(driverCid)) or 0
+    local completedRides = (QbxTaxiDB and QbxTaxiDB['countCompletedRides'] and QbxTaxiDB['countCompletedRides'](driverCid)) or 0
+    local todayEarnings = (QbxTaxiDB and QbxTaxiDB['getTodayEarnings'] and QbxTaxiDB['getTodayEarnings'](driverCid)) or 0
     
     print(('[qbx_taxijob] [DEBUG] Driver stats for %s: %.2f rating, %d reviews, %d rides'):format(
         driverCid, stats.average_rating, stats.total_reviews, completedRides

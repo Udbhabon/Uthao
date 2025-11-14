@@ -2,6 +2,8 @@
 
 local nuiReadyCustomer = false
 local customerTabletOpen = false
+---@diagnostic disable: undefined-global
+local lib = lib
 
 -- Optional ready handshake (React can post this later if needed)
 RegisterNUICallback('customerTablet:ready', function(_, cb)
@@ -45,10 +47,13 @@ RegisterCommand('customertablet', function()
     }
     
     customerTabletOpen = true
+    -- Fetch autopay preference from server
+    local autoPay = lib.callback.await('qbx_taxijob:server:GetAutoPayPreference', false) or false
     SendNUIMessage({ 
         action = 'openCustomerTablet', 
         toggle = true,
-        customerProfile = customerProfile
+        customerProfile = customerProfile,
+        autopayEnabled = autoPay
     })
     SetNuiFocus(true, true)
     
@@ -56,6 +61,18 @@ RegisterCommand('customertablet', function()
     print('[qbx_taxijob] [CLIENT] Customer tablet opened, fetching drivers once...')
     updateOnlineDrivers()
 end, false)
+-- NUI: get autopay preference (used by React to sync initial toggle)
+RegisterNUICallback('customer:getAutopay', function(_, cb)
+    local autoPay = lib.callback.await('qbx_taxijob:server:GetAutoPayPreference', false) or false
+    cb({ enabled = autoPay })
+end)
+
+-- NUI: set autopay preference and persist to DB
+RegisterNUICallback('customer:setAutopay', function(data, cb)
+    local enabled = data and data.enabled or false
+    TriggerServerEvent('qbx_taxijob:server:SetAutoPayPreference', enabled)
+    cb('ok')
+end)
 
 -- Close handlers from React (new + legacy naming for flexibility)
 RegisterNUICallback('customerTablet:close', function(_, cb)
