@@ -101,7 +101,7 @@ RegisterNetEvent('qbx_taxijob:client:UpdateOnlineDrivers', function()
 end)
 
 -- Handle ride assignment (driver accepted)
-RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driverSrc, driverName, coords, modelHash, plate)
+RegisterNetEvent('qb-taxijob:client:RideAssigned', function(driverSrc, driverName, coords, modelHash, plate)
     -- Sanitize driver name if a bad value like "table: 0x..." slips through
     local safeName = 'Driver'
     if type(driverName) == 'string' and not string.find(driverName, 'table:') then
@@ -137,7 +137,7 @@ RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driver
     
     -- Handle existing blip system (from bookings.lua)
     CurrentAssignedDriver = driverSrc
-    if coords then
+    if coords and type(coords) == 'table' and coords.x and coords.y and coords.z then
         if RequesterPickupBlip then RemoveBlip(RequesterPickupBlip); RequesterPickupBlip = nil end
         RequesterPickupBlip = AddBlipForCoord(coords.x, coords.y, coords.z)
         SetBlipSprite(RequesterPickupBlip, 1)

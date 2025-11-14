@@ -128,10 +128,10 @@ RegisterNetEvent('qb-taxijob:client:ClearRideBlips', function()
 end)
 
 
-RegisterNetEvent('qb-taxijob:client:RideAssigned', function(requesterSrc, driverSrc, driverName, coords, modelHash, plate)
+RegisterNetEvent('qb-taxijob:client:RideAssigned', function(driverSrc, driverName, coords, modelHash, plate)
     exports.qbx_core:Notify(('Driver %s is on the way to your location'):format(driverName or 'a driver'), 'success')
     CurrentAssignedDriver = driverSrc
-    if coords then
+    if coords and type(coords) == 'table' and coords.x and coords.y and coords.z then
         if RequesterPickupBlip then RemoveBlip(RequesterPickupBlip); RequesterPickupBlip = nil end
         RequesterPickupBlip = AddBlipForCoord(coords.x, coords.y, coords.z)
         SetBlipSprite(RequesterPickupBlip, 1)
