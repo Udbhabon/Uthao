@@ -109,8 +109,9 @@ export default function App() {
           setOnlineDrivers(data.drivers || [])
           break
         case 'rideAccepted':
+          // Driver accepted; passenger waiting for pickup / ride start
           setRideStatus({
-            status: 'accepted',
+            status: 'accepted', // keep original for downstream but UI will map to 'waiting'
             driver: data.driverName,
             driverSrc: data.driverSrc,
             vehicleName: data.vehicleName,
@@ -118,9 +119,9 @@ export default function App() {
           })
           break
         case 'rideVehicleInfo':
-          // Update accepted ride with real-time vehicle info
+          // Ride started (driver + passenger together)
           setRideStatus((prev: any) => ({
-            status: 'accepted',
+            status: 'in-progress',
             driver: data.driverName || prev?.driver,
             driverSrc: prev?.driverSrc,
             vehicleName: data.vehicleName,

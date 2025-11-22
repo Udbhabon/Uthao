@@ -20,7 +20,7 @@ interface CustomerProfile {
 }
 
 interface RideStatusUpdate {
-  status: 'accepted' | 'rejected' | 'completed'
+  status: 'accepted' | 'in-progress' | 'rejected' | 'completed'
   driver?: string
   driverSrc?: number
   reason?: string
@@ -46,7 +46,7 @@ interface Props {
 
 export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDrivers: liveDrivers, customerProfile: liveProfile, rideStatusUpdate, onRideStatusHandled, paymentResult, onPaymentResultHandled }) => {
   const [activeSection, setActiveSection] = useState<'home' | 'payment' | 'safety' | 'support' | 'settings'>('home')
-  const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'matched' | 'in-progress' | 'payment' | 'completed' | 'rejected'>('idle')
+  const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'waiting' | 'in-progress' | 'payment' | 'completed' | 'rejected'>('idle')
   const [rating, setRating] = useState(0)
   const [autoPayEnabled, setAutoPayEnabled] = useState(true)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'debit' | 'cash'>('debit')
@@ -79,7 +79,8 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   React.useEffect(() => {
       if (rideStatusUpdate && onRideStatusHandled) {
       if (rideStatusUpdate.status === 'accepted') {
-        setRideStatus('matched')
+        // Waiting for pickup state
+        setRideStatus('waiting')
         // Ensure we only set primitive values, not objects
           const rawName = (rideStatusUpdate.driverName || rideStatusUpdate.driver || 'Driver') as any
           let driverName = typeof rawName === 'string' ? rawName : 'Driver'
@@ -97,6 +98,9 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
           plate: rideStatusUpdate.plate
         })
         onRideStatusHandled() // Clear non-completed statuses
+      } else if (rideStatusUpdate.status === 'in-progress') {
+        setRideStatus('in-progress')
+        // do not clear, we remain until completion
       } else if (rideStatusUpdate.status === 'rejected') {
         // Show rejection screen instead of going back to idle
         setRideStatus('rejected' as any)
@@ -388,7 +392,11 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
       <div className="glass-card p-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold text-white">Ride Status</h3>
-          <span className="glass-badge bg-green-500/20 text-green-400">In Progress</span>
+          {rideStatus === 'waiting' ? (
+            <span className="glass-badge bg-yellow-500/20 text-yellow-300">Waiting for Pickup</span>
+          ) : (
+            <span className="glass-badge bg-green-500/20 text-green-400">In Progress</span>
+          )}
         </div>
         <div className="space-y-4">
           <div className="flex items-center gap-4">
@@ -396,8 +404,17 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
               <Clock size={24} className="text-green-400" />
             </div>
             <div className="flex-1">
-              <div className="text-white font-semibold">Estimated Arrival</div>
-              <div className="text-gray-400">{currentDriver.eta}</div>
+              {rideStatus === 'waiting' ? (
+                <>
+                  <div className="text-white font-semibold">Driver ETA</div>
+                  <div className="text-gray-400">{currentDriver.eta}</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-white font-semibold">Estimated Arrival</div>
+                  <div className="text-gray-400">{currentDriver.eta}</div>
+                </>
+              )}
             </div>
           </div>
           <div className="glass-card p-4">
@@ -921,7 +938,7 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
                   </div>
                 </div>
               )}
-              {(rideStatus === 'matched' || rideStatus === 'in-progress') && <RideInProgress />}
+              {(rideStatus === 'waiting' || rideStatus === 'in-progress') && <RideInProgress />}
               {rideStatus === 'payment' && <PaymentSelection />}
               {rideStatus === 'completed' && <Rating />}
               {activeSection === 'payment' && <Payment />}
