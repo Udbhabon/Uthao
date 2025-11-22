@@ -229,6 +229,13 @@ RegisterNetEvent('qbx_taxijob:client:RideCompleted', function(data)
     print(('[qbx_taxijob] [CLIENT] Ride completed notification received - Fare: $%.2f, Paid: %s'):format(fare, tostring(paid)))
     print(('[qbx_taxijob] [CLIENT] Customer tablet open: %s'):format(tostring(customerTabletOpen)))
     
+    -- Close passenger meter when ride completes
+    SendNUIMessage({
+        action = 'openMeter',
+        toggle = false
+    })
+    print('[qbx_taxijob] [CLIENT] [PASSENGER] Closed passenger meter on ride completion')
+    
     -- ALWAYS send to NUI regardless of tablet open state
     -- This ensures the state is updated even if customer opens tablet after ride ends
     SendNUIMessage({

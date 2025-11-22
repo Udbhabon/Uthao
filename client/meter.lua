@@ -171,6 +171,13 @@ RegisterNetEvent('qbx_taxijob:client:StartRideMeter', function()
         return
     end
     
+    -- CRITICAL: Reset meter data to zero for new ride
+    print('[qbx_taxijob] [StartRideMeter] Resetting meter data for new ride')
+    resetMeter()
+    if nuiReady then
+        SendNUIMessage({ action = 'resetMeter' })
+    end
+    
     -- If meter not open, open it first
     if not meterIsOpen then
         print('[qbx_taxijob] [StartRideMeter] Opening meter and starting')
@@ -195,6 +202,7 @@ RegisterNetEvent('qbx_taxijob:client:StartRideMeter', function()
         })
         meterActive = true
         startFareThread()
+        lastLocation = GetEntityCoords(cache.ped)
         print(('[qbx_taxijob] [StartRideMeter] Meter set to running. meterActive=%s'):format(tostring(meterActive)))
     end
 end)
