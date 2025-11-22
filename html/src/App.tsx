@@ -17,6 +17,7 @@ export default function App() {
   const [defaultPrice, setDefaultPrice] = useState(0)
   const [currentFare, setCurrentFare] = useState(0)
   const [distance, setDistance] = useState(0)
+  const [speed, setSpeed] = useState(0)
 
   useEffect(() => {
     // Signal to the client script that the NUI is mounted and ready
@@ -34,6 +35,7 @@ export default function App() {
             // If meterStarted is explicitly provided, set it
             if (data.meterStarted !== undefined) {
               setMeterStarted(!!data.meterStarted)
+              console.log('[qbx_taxijob] [REACT] Meter opened - Started:', !!data.meterStarted)
             }
           } else {
             setVisible(false)
@@ -56,11 +58,15 @@ export default function App() {
           const meterData: MeterData = data.meterData || {}
           setCurrentFare(Number(meterData.currentFare || 0))
           setDistance(Number(meterData.distanceTraveled || 0))
+          if (data.speed !== undefined) {
+            setSpeed(Number(data.speed || 0))
+          }
           break
         }
         case 'resetMeter': {
           setCurrentFare(0)
           setDistance(0)
+          setSpeed(0)
           setMeterStarted(false)
           break
         }
@@ -120,13 +126,20 @@ export default function App() {
           break
         case 'rideVehicleInfo':
           // Ride started (driver + passenger together)
-          setRideStatus((prev: any) => ({
-            status: 'in-progress',
-            driver: data.driverName || prev?.driver,
-            driverSrc: prev?.driverSrc,
-            vehicleName: data.vehicleName,
-            plate: data.vehiclePlate,
-          }))
+          console.log('[qbx_taxijob] [REACT] [PASSENGER] Received rideVehicleInfo - setting status to in-progress')
+          console.log('[qbx_taxijob] [REACT] [PASSENGER] Data:', data)
+          setRideStatus((prev: any) => {
+            const newStatus = {
+              status: 'in-progress',
+              driver: data.driverName || prev?.driver,
+              driverSrc: prev?.driverSrc,
+              vehicleName: data.vehicleName,
+              plate: data.vehiclePlate,
+            }
+            console.log('[qbx_taxijob] [REACT] [PASSENGER] New rideStatus:', newStatus)
+            console.log('[qbx_taxijob] [REACT] [PASSENGER] Passenger meter should now be VISIBLE')
+            return newStatus
+          })
           break
         case 'rideRejected':
           setRideStatus({ status: 'rejected', reason: data.reason })
@@ -186,11 +199,13 @@ export default function App() {
 
   return (
     <>
+      {/* Single unified meter - shows for driver (visible=true) or passenger (rideStatus in-progress) */}
       <Meter
-        visible={visible}
-        meterStarted={meterStarted}
+        visible={visible || rideStatus?.status === 'in-progress'}
+        meterStarted={meterStarted || rideStatus?.status === 'in-progress'}
         currentFare={currentFare}
         distance={distance}
+        speed={speed}
         defaultPrice={defaultPrice}
         onToggle={meterToggle}
       />

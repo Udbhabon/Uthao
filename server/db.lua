@@ -5,6 +5,7 @@
 ---@class TaxiMySQLDB
 local DB = {
     driverActiveRide = {}, -- [driver_id=citizenid] = ride_id (in-memory cache)
+    activeRidePassenger = {}, -- [ride_id] = passenger_source (in-memory cache for meter sync)
 }
 
 ---@diagnostic disable: undefined-global
@@ -229,11 +230,16 @@ function DB.acceptRide(ride_id, driverPlayer)
     print(('[qbx_taxijob] [DB] Driver %s accepted ride: %s'):format(did, ride_id))
 end
 
-function DB.markInProgressByDriver(driverPlayer)
+function DB.markInProgressByDriver(driverPlayer, passengerSource)
     local did = getCitizenId(driverPlayer)
     if not did then return end
     local ride_id = DB.driverActiveRide[did]
     if not ride_id then return end
+    
+    -- Store passenger source for meter sync
+    if passengerSource then
+        DB.activeRidePassenger[ride_id] = passengerSource
+    end
     
     MySQL.update.await('UPDATE taxi_rides SET status = ? WHERE ride_id = ? AND status != ?', {
         'in_progress', ride_id, 'in_progress'
@@ -249,10 +255,20 @@ function DB.completeRideByDriver(driverPlayer)
         MySQL.update.await('UPDATE taxi_rides SET status = ?, completed_at = NOW() WHERE ride_id = ?', {
             'completed', ride_id
         })
+        -- Clean up passenger source cache
+        DB.activeRidePassenger[ride_id] = nil
     end
     
     DB.driverActiveRide[did] = nil
     print(('[qbx_taxijob] [DB] Driver %s completed ride: %s'):format(did, ride_id))
+end
+
+function DB.getPassengerSourceForDriver(driverPlayer)
+    local did = getCitizenId(driverPlayer)
+    if not did then return nil end
+    local ride_id = DB.driverActiveRide[did]
+    if not ride_id then return nil end
+    return DB.activeRidePassenger[ride_id]
 end
 
 -- ============================================================================

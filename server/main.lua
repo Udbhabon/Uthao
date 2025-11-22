@@ -623,8 +623,8 @@ local function startRideLogic(src)
         return false, 'Passenger is not in your vehicle'
     end
 
-    -- Mark in-progress
-    QbxTaxiDB.markInProgressByDriver(driver)
+    -- Mark in-progress and store passenger source for meter sync
+    QbxTaxiDB.markInProgressByDriver(driver, passengerSource)
 
     -- Clear pickup/driver blips for both
     TriggerClientEvent('qb-taxijob:client:ClearRideBlips', src)
@@ -649,12 +649,18 @@ local function startRideLogic(src)
             local ptxt = GetVehicleNumberPlateText(vehicle)
             if ptxt and ptxt ~= '' then plate = ptxt end
         end
+        
+        print(('[qbx_taxijob] [SERVER] Sending RideVehicleInfo to passenger (source: %s)'):format(passengerSource))
+        print(('[qbx_taxijob] [SERVER] Data: Driver=%s, Model=%s, Plate=%s'):format(dname, modelHash, plate))
+        
         TriggerClientEvent('qbx_taxijob:client:RideVehicleInfo', passengerSource, {
             driverSrc = src,
             driverName = dname,
             modelHash = modelHash,
             plate = plate
         })
+        
+        print('[qbx_taxijob] [SERVER] RideVehicleInfo event triggered - passenger should receive and show meter')
     end
     
     return true, 'Ride started. Meter running.'
@@ -712,6 +718,20 @@ RegisterNetEvent('qb-taxijob:server:CheckPlate', function(plate)
     end
 
     TriggerClientEvent('qb-taxijob:client:CheckPlateResult', src, plate, exists)
+end)
+
+-- Relay driver meter updates to passenger in real-time
+RegisterNetEvent('qbx_taxijob:server:MeterUpdate', function(meterData, speed)
+    local src = source
+    local driver = exports.qbx_core:GetPlayer(src)
+    if not driver then return end
+    
+    -- Get passenger source from active ride cache
+    local passengerSource = QbxTaxiDB.getPassengerSourceForDriver(driver)
+    if passengerSource and passengerSource ~= src then
+        -- Forward meter data and speed to passenger
+        TriggerClientEvent('qbx_taxijob:client:PassengerMeterUpdate', passengerSource, meterData, speed)
+    end
 end)
 
 -- Callback usable by clients to synchronously check plate ownership via lib.callback.await

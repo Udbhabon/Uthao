@@ -168,12 +168,23 @@ function calculateFareAmount()
 
             meterData['currentFare'] = math.floor(fareAmount)
             
-            print(('[qbx_taxijob] [calculateFareAmount] Distance: %.2f mi, Fare: $%d'):format(meterData['distanceTraveled'], meterData['currentFare']))
+            -- Get vehicle speed (convert to km/h)
+            local veh = cache.vehicle
+            local speed = 0
+            if veh and veh ~= 0 then
+                speed = math.floor(GetEntitySpeed(veh) * 3.6) -- Convert m/s to km/h
+            end
+            
+            print(('[qbx_taxijob] [calculateFareAmount] Distance: %.2f mi, Fare: $%d, Speed: %d km/h'):format(meterData['distanceTraveled'], meterData['currentFare'], speed))
 
             SendNUIMessage({
                 action = 'updateMeter',
-                meterData = meterData
+                meterData = meterData,
+                speed = speed
             })
+            
+            -- Broadcast to server for passenger sync (if driver has active ride)
+            TriggerServerEvent('qbx_taxijob:server:MeterUpdate', meterData, speed)
         end
     else
         if not meterIsOpen then

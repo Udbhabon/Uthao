@@ -150,6 +150,9 @@ end)
 
 -- Ride started: server pushes actual vehicle model/plate; forward to NUI
 RegisterNetEvent('qbx_taxijob:client:RideVehicleInfo', function(data)
+    print('[qbx_taxijob] [CLIENT] [PASSENGER] RideVehicleInfo event received')
+    print(('[qbx_taxijob] [CLIENT] [PASSENGER] Data: %s'):format(json.encode(data or {})))
+    
     local modelHash = data and data.modelHash or 0
     local plate = (data and data.plate) or 'UNKNOWN'
     local driverName = (data and data.driverName) or 'Driver'
@@ -167,13 +170,27 @@ RegisterNetEvent('qbx_taxijob:client:RideVehicleInfo', function(data)
         end
     end
 
-    -- Always send to NUI; UI will update whether tablet is open or not
+    print(('[qbx_taxijob] [CLIENT] [PASSENGER] Sending rideVehicleInfo to NUI - Driver: %s, Vehicle: %s, Plate: %s'):format(driverName, vehicleName, plate))
+    
+    -- Send ride info to update tablet UI
     SendNUIMessage({
         action = 'rideVehicleInfo',
         driverName = tostring(driverName or 'Driver'),
         vehicleName = vehicleName,
         vehiclePlate = tostring(plate or 'UNKNOWN')
     })
+    
+    -- CRITICAL: Also open the passenger meter explicitly
+    -- This ensures passenger sees the meter even if React state isn't fully synced
+    local config = require 'config.client'
+    SendNUIMessage({
+        action = 'openMeter',
+        toggle = true,
+        meterData = config.meter or { defaultPrice = 0 },
+        meterStarted = true  -- Passenger meter starts in running state
+    })
+    
+    print('[qbx_taxijob] [CLIENT] [PASSENGER] Passenger meter explicitly opened - should now be visible')
 end)
 
 -- Handle all drivers busy
@@ -185,6 +202,22 @@ RegisterNetEvent('qbx_taxijob:client:AllDriversBusy', function()
         })
     end
     exports.qbx_core:Notify('All drivers are busy right now. Please try again later.', 'error')
+end)
+
+-- Receive real-time meter updates from driver during ride
+RegisterNetEvent('qbx_taxijob:client:PassengerMeterUpdate', function(meterData, speed)
+    print(('[qbx_taxijob] [CLIENT] [PASSENGER] Meter update received - Fare: $%.2f, Distance: %.2f mi, Speed: %d km/h'):format(
+        meterData.currentFare or 0, 
+        meterData.distanceTraveled or 0,
+        speed or 0
+    ))
+    
+    -- Forward live meter data and speed to passenger's NUI
+    SendNUIMessage({
+        action = 'updateMeter',
+        meterData = meterData,
+        speed = speed or 0
+    })
 end)
 
 -- Handle ride completed (driver ended the ride)

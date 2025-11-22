@@ -6,53 +6,35 @@ interface MeterProps {
   meterStarted: boolean
   currentFare: number
   distance: number
+  speed: number
   defaultPrice: number
   onToggle: () => void
 }
 
-export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare, distance }) => {
-  const [simFare, setSimFare] = useState(0)
-  const [simDistance, setSimDistance] = useState(0)
+export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare, distance, speed }) => {
   const [duration, setDuration] = useState(0)
-  const [speed, setSpeed] = useState(0)
 
   const BASE_FARE = 2.50
   const PER_KM_RATE = 1.20
   const PER_MINUTE_RATE = 0.35
 
-  const useSimulation = meterStarted && currentFare === 0 && distance === 0
-
+  // Time simulation: count up while meter is running
   useEffect(() => {
     if (!meterStarted) {
-      setSimFare(0)
-      setSimDistance(0)
       setDuration(0)
-      setSpeed(0)
       return
     }
-    if (!useSimulation) return
     const interval = setInterval(() => {
-      setSimDistance(prev => +(prev + 0.01).toFixed(2))
       setDuration(prev => prev + 1)
-      setSpeed(Math.floor(Math.random() * 30) + 20)
     }, 1000)
     return () => clearInterval(interval)
-  }, [meterStarted, useSimulation])
-
-  useEffect(() => {
-    if (!meterStarted || !useSimulation) return
-    const fare = BASE_FARE + (simDistance * PER_KM_RATE) + (duration / 60 * PER_MINUTE_RATE)
-    setSimFare(fare)
-  }, [meterStarted, useSimulation, simDistance, duration])
+  }, [meterStarted])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
-
-  const displayedFare = useSimulation ? simFare : currentFare
-  const displayedDistance = useSimulation ? simDistance : distance
 
   if (!visible) return null
 
@@ -80,7 +62,7 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
                 <p className="text-slate-400 text-[10px] font-medium uppercase tracking-wide mb-1">Current Fare</p>
                 <div className="relative">
                   <div className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 mb-0.5 select-none">
-                    ${displayedFare.toFixed(2)}
+                    ${currentFare.toFixed(2)}
                   </div>
                   {meterStarted && (
                     <div className="absolute inset-0 bg-gradient-to-r from-cyan-400/20 to-blue-500/20 blur-2xl animate-pulse" />
@@ -93,7 +75,7 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
                     <MapPin className="w-3.5 h-3.5 text-blue-400" />
                     <p className="text-blue-300 text-[10px] font-medium">Distance</p>
                   </div>
-                  <p className="text-white text-lg font-bold">{displayedDistance.toFixed(2)}</p>
+                  <p className="text-white text-lg font-bold">{distance.toFixed(2)}</p>
                   <p className="text-blue-300 text-[10px]">km</p>
                 </div>
                 <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/20 rounded-xl p-2.5">
@@ -109,7 +91,7 @@ export const Meter: React.FC<MeterProps> = ({ visible, meterStarted, currentFare
                     <Zap className="w-3.5 h-3.5 text-orange-400" />
                     <p className="text-orange-300 text-[10px] font-medium">Speed</p>
                   </div>
-                  <p className="text-white text-lg font-bold">{speed}</p>
+                  <p className="text-white text-lg font-bold">{Math.round(speed)}</p>
                   <p className="text-orange-300 text-[10px]">km/h</p>
                 </div>
               </div>
