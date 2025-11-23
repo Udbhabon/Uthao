@@ -48,7 +48,7 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   const [activeSection, setActiveSection] = useState<'home' | 'payment' | 'safety' | 'support' | 'settings'>('home')
   const [rideStatus, setRideStatus] = useState<'idle' | 'searching' | 'waiting' | 'in-progress' | 'payment' | 'completed' | 'rejected'>('idle')
   const [rating, setRating] = useState(0)
-  const [autoPayEnabled, setAutoPayEnabled] = useState(true)
+  const [autoPayEnabled, setAutoPayEnabled] = useState(true)  // Default to true for user convenience
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'debit' | 'cash'>('debit')
   const [pickupLocation, setPickupLocation] = useState('Current Location')
   const [bookingMessage, setBookingMessage] = useState('')
@@ -63,17 +63,33 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
   // Track if we've handled a completed status to avoid re-processing
   const handledCompletionRef = React.useRef<boolean>(false)
 
-  // Sync autopay preference from client on mount
+  // Sync autopay preference from client when tablet becomes visible
   React.useEffect(() => {
-    (async () => {
+    if (!visible) return
+    
+    console.log('[qbx_taxijob] [CustomerTablet] Tablet opened, fetching autopay preference...')
+    
+    const fetchAutopay = async () => {
       try {
         const res: any = await nuiSend('customer:getAutopay')
-        if (res && typeof res.enabled === 'boolean') {
-          setAutoPayEnabled(!!res.enabled)
+        console.log('[qbx_taxijob] [CustomerTablet] Autopay response:', JSON.stringify(res))
+        
+        if (res && res.hasOwnProperty('enabled')) {
+          const enabled = !!res.enabled
+          console.log('[qbx_taxijob] [CustomerTablet] Setting autopay state to:', enabled)
+          setAutoPayEnabled(enabled)
+        } else {
+          console.warn('[qbx_taxijob] [CustomerTablet] Invalid autopay response, defaulting to true')
+          setAutoPayEnabled(true)
         }
-      } catch {}
-    })()
-  }, [])
+      } catch (err) {
+        console.error('[qbx_taxijob] [CustomerTablet] Failed to fetch autopay:', err)
+        setAutoPayEnabled(true)  // Default to true on error
+      }
+    }
+    
+    fetchAutopay()
+  }, [visible])
 
   // Handle ride status updates from server
   React.useEffect(() => {
@@ -120,6 +136,13 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
         // If the ride was auto-paid server-side, or the user has autopay enabled, skip payment UI
         const paidImmediate = !!rideStatusUpdate.paid
         const shouldSkipPayment = paidImmediate || !!autoPayEnabled
+        
+        // Set payment method to debit when autopay is used
+        if (shouldSkipPayment) {
+          setSelectedPaymentMethod('debit')
+          console.log('[qbx_taxijob] [CustomerTablet] Autopay processed, payment method set to debit')
+        }
+        
         setRideStatus(shouldSkipPayment ? 'completed' : 'payment')
         setPaymentError(null)
         
@@ -862,8 +885,14 @@ export const CustomerTablet: React.FC<Props> = ({ visible, onClose, onlineDriver
             <button 
               onClick={async () => {
                 const next = !autoPayEnabled
+                console.log('[qbx_taxijob] [CustomerTablet] Toggling autopay to:', next)
                 setAutoPayEnabled(next)
-                try { await nuiSend('customer:setAutopay', { enabled: next }) } catch {}
+                try { 
+                  await nuiSend('customer:setAutopay', { enabled: next })
+                  console.log('[qbx_taxijob] [CustomerTablet] Autopay preference saved to DB')
+                } catch (err) {
+                  console.error('[qbx_taxijob] [CustomerTablet] Failed to save autopay:', err)
+                }
               }}
               className={`w-16 h-8 rounded-full transition-all ${autoPayEnabled ? 'bg-cyan-600' : 'bg-gray-600'}`}
             >

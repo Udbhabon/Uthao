@@ -47,8 +47,9 @@ RegisterCommand('customertablet', function()
     }
     
     customerTabletOpen = true
-    -- Fetch autopay preference from server
-    local autoPay = lib.callback.await('qbx_taxijob:server:GetAutoPayPreference', false) or false
+    -- Fetch autopay preference from server (defaults to true if no response)
+    local autoPay = lib.callback.await('qbx_taxijob:server:GetAutoPayPreference', false)
+    if autoPay == nil then autoPay = true end  -- Default to true for user convenience
     SendNUIMessage({ 
         action = 'openCustomerTablet', 
         toggle = true,
@@ -63,13 +64,37 @@ RegisterCommand('customertablet', function()
 end, false)
 -- NUI: get autopay preference (used by React to sync initial toggle)
 RegisterNUICallback('customer:getAutopay', function(_, cb)
-    local autoPay = lib.callback.await('qbx_taxijob:server:GetAutoPayPreference', false) or false
-    cb({ enabled = autoPay })
+    print('[qbx_taxijob] [CLIENT] ========== AUTOPAY FETCH START ==========')
+    print('[qbx_taxijob] [CLIENT] Fetching autopay preference from server...')
+    
+    local autoPay = lib.callback.await('qbx_taxijob:server:GetAutoPayPreference', false)
+    
+    print(('[qbx_taxijob] [CLIENT] Received from server callback: %s (type: %s)'):format(
+        tostring(autoPay), type(autoPay)
+    ))
+    print(('[qbx_taxijob] [CLIENT] autoPay == true: %s'):format(tostring(autoPay == true)))
+    print(('[qbx_taxijob] [CLIENT] autoPay == false: %s'):format(tostring(autoPay == false)))
+    print(('[qbx_taxijob] [CLIENT] autoPay == 1: %s'):format(tostring(autoPay == 1)))
+    print(('[qbx_taxijob] [CLIENT] autoPay == 0: %s'):format(tostring(autoPay == 0)))
+    
+    if autoPay == nil then autoPay = true end  -- Default to true for user convenience
+    
+    -- Explicit boolean conversion
+    local enabled = autoPay == true or autoPay == 1 or (type(autoPay) == 'string' and autoPay == 'true')
+    
+    print(('[qbx_taxijob] [CLIENT] Final enabled value: %s (type: %s)'):format(
+        tostring(enabled), type(enabled)
+    ))
+    print(('[qbx_taxijob] [CLIENT] Sending to React NUI: { enabled = %s }'):format(tostring(enabled)))
+    print('[qbx_taxijob] [CLIENT] ========== AUTOPAY FETCH END ==========')
+    
+    cb({ enabled = enabled })
 end)
 
 -- NUI: set autopay preference and persist to DB
 RegisterNUICallback('customer:setAutopay', function(data, cb)
     local enabled = data and data.enabled or false
+    print(('[qbx_taxijob] [CLIENT] Setting autopay preference: %s'):format(tostring(enabled)))
     TriggerServerEvent('qbx_taxijob:server:SetAutoPayPreference', enabled)
     cb('ok')
 end)

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS `taxi_users` (
     `citizenid` VARCHAR(50) NOT NULL UNIQUE,
     `name` VARCHAR(100) NOT NULL,
     `phone` VARCHAR(20),
+    `autopay_enabled` TINYINT(1) DEFAULT NULL COMMENT 'NULL=not set (defaults to true), 0=disabled, 1=enabled',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX `idx_citizenid` (`citizenid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

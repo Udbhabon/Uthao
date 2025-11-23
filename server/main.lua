@@ -336,17 +336,52 @@ RegisterNetEvent('qb-taxijob:server:EndRide', function(fare)
     end
     local paidImmediate = false
     if autoPayEnabled and passengerPlayer and driverPlayer and amount > 0 then
+        print(('[qbx_taxijob] [AUTOPAY] Attempting immediate autopay - Passenger: %s, Driver: %s, Amount: $%.2f'):format(uid or 'unknown', did or 'unknown', amount))
+        
         local removed = passengerPlayer.Functions and passengerPlayer.Functions.RemoveMoney and passengerPlayer.Functions.RemoveMoney('bank', amount, 'taxi-fare-autopay-immediate')
+        
         if removed then
+            print(('[qbx_taxijob] [AUTOPAY] Successfully removed $%.2f from passenger bank'):format(amount))
             paidImmediate = true
+            
             if driverPlayer.Functions and driverPlayer.Functions.AddMoney then
-                driverPlayer.Functions.AddMoney('bank', amount, 'taxi-fare-received-autopay')
+                local added = driverPlayer.Functions.AddMoney('bank', amount, 'taxi-fare-received-autopay')
+                print(('[qbx_taxijob] [AUTOPAY] Added $%.2f to driver bank - Success: %s'):format(amount, tostring(added)))
+            else
+                print('[qbx_taxijob] [AUTOPAY] [ERROR] Failed to add money to driver - Functions not available')
             end
+            
             if QbxTaxiDB and uid and did and ride_id then
                 QbxTaxiDB.addTransaction(uid, did, ride_id, amount, 'paid_auto')
             end
+            
+            -- Notify both players
+            lib.notify(requester, {
+                title = 'Auto Payment',
+                description = ('$%.2f deducted from your bank account'):format(amount),
+                type = 'success'
+            })
+            
+            lib.notify(src, {
+                title = 'Payment Received',
+                description = ('$%.2f deposited to your bank (autopay)'):format(amount),
+                type = 'success'
+            })
+            
             -- Clear pending to avoid timeout auto-pay
             pendingPayments[requester] = nil
+        else
+            print(('[qbx_taxijob] [AUTOPAY] [ERROR] Failed to remove money from passenger bank - Insufficient funds or error'):format())
+        end
+    else
+        if not autoPayEnabled then
+            print('[qbx_taxijob] [AUTOPAY] Autopay disabled for this passenger')
+        elseif not passengerPlayer then
+            print('[qbx_taxijob] [AUTOPAY] [ERROR] Passenger player object not found')
+        elseif not driverPlayer then
+            print('[qbx_taxijob] [AUTOPAY] [ERROR] Driver player object not found')
+        elseif amount <= 0 then
+            print('[qbx_taxijob] [AUTOPAY] [ERROR] Invalid amount: ' .. tostring(amount))
         end
     end
 
@@ -449,19 +484,42 @@ end)
 -- Autopay preference APIs
 lib.callback.register('qbx_taxijob:server:GetAutoPayPreference', function(source)
     local player = exports.qbx_core:GetPlayer(source)
-    if not player then return false end
+    if not player then 
+        print('[qbx_taxijob] [GetAutoPayPreference] Invalid player source: ' .. tostring(source))
+        return true  -- Default to true for user convenience
+    end
     local uid = player.PlayerData.citizenid
-    if not QbxTaxiDB or not QbxTaxiDB.getAutoPayEnabled then return false end
-    return QbxTaxiDB.getAutoPayEnabled(uid)
+    if not QbxTaxiDB or not QbxTaxiDB.getAutoPayEnabled then 
+        print('[qbx_taxijob] [GetAutoPayPreference] DB not available')
+        return true  -- Default to true for user convenience
+    end
+    local enabled = QbxTaxiDB.getAutoPayEnabled(uid)
+    
+    -- Explicit boolean conversion to ensure proper type
+    local result = enabled == true or enabled == 1
+    
+    print(('[qbx_taxijob] [GetAutoPayPreference] User: %s, DB returned: %s (type: %s), Sending: %s (type: %s)'):format(
+        uid, tostring(enabled), type(enabled), tostring(result), type(result)
+    ))
+    
+    return result
 end)
 
 RegisterNetEvent('qbx_taxijob:server:SetAutoPayPreference', function(enabled)
     local src = source
     local player = exports.qbx_core:GetPlayer(src)
-    if not player then return end
+    if not player then 
+        print('[qbx_taxijob] [SetAutoPayPreference] Invalid player source: ' .. tostring(src))
+        return 
+    end
     local uid = player.PlayerData.citizenid
     if QbxTaxiDB and QbxTaxiDB.setAutoPayEnabled then
-        QbxTaxiDB.setAutoPayEnabled(uid, enabled and true or false)
+        local boolValue = enabled and true or false
+        print(('[qbx_taxijob] [SetAutoPayPreference] User: %s, Setting autopay to: %s'):format(uid, tostring(boolValue)))
+        QbxTaxiDB.setAutoPayEnabled(uid, boolValue)
+        print(('[qbx_taxijob] [SetAutoPayPreference] Successfully saved autopay preference to DB'):format())
+    else
+        print('[qbx_taxijob] [SetAutoPayPreference] [ERROR] DB not available')
     end
 end)
 

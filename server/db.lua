@@ -24,7 +24,8 @@ local function ensureAutopayColumn()
         exists = tonumber(exists) or 0
         if exists == 0 then
             print('[qbx_taxijob] [DB] Adding taxi_users.autopay_enabled column (auto)')
-            MySQL.raw.execute('ALTER TABLE taxi_users ADD COLUMN autopay_enabled TINYINT(1) NOT NULL DEFAULT 0')
+            -- NULL = not set (defaults to true), 0 = explicitly disabled, 1 = explicitly enabled
+            MySQL.raw.execute('ALTER TABLE taxi_users ADD COLUMN autopay_enabled TINYINT(1) DEFAULT NULL')
         end
     else
         -- Silently continue; fallback logic in callers will assume disabled
@@ -99,8 +100,9 @@ function DB.upsertUserFromPlayer(player)
     if existing > 0 then
         MySQL.update.await('UPDATE taxi_users SET name = ?, phone = ? WHERE citizenid = ?', { name, phone, uid })
     else
-        ensureAutopayColumn()
-        MySQL.insert.await('INSERT INTO taxi_users (citizenid, name, phone, autopay_enabled) VALUES (?, ?, ?, 0)', { uid, name, phone })
+        -- Don't set autopay_enabled here - let user set their preference via tablet
+        -- Column will default to NULL, which getAutoPayEnabled treats as true (user-friendly default)
+        MySQL.insert.await('INSERT INTO taxi_users (citizenid, name, phone) VALUES (?, ?, ?)', { uid, name, phone })
     end
 end
 
@@ -111,21 +113,32 @@ end
 function DB.setAutoPayEnabled(user_id, enabled)
     if not user_id then return false end
     local val = enabled and 1 or 0
+    print(('[qbx_taxijob] [DB] setAutoPayEnabled - User: %s, Enabled: %s, Val: %d'):format(user_id, tostring(enabled), val))
     ensureAutopayColumn()
     local existing = MySQL.scalar.await('SELECT COUNT(*) FROM taxi_users WHERE citizenid = ?', { user_id })
     if existing == 0 then
+        print(('[qbx_taxijob] [DB] Inserting new user with autopay: %d'):format(val))
         MySQL.insert.await('INSERT INTO taxi_users (citizenid, autopay_enabled) VALUES (?, ?)', { user_id, val })
     else
+        print(('[qbx_taxijob] [DB] Updating existing user autopay to: %d'):format(val))
         MySQL.update.await('UPDATE taxi_users SET autopay_enabled = ? WHERE citizenid = ?', { val, user_id })
     end
+    print('[qbx_taxijob] [DB] Autopay preference saved successfully')
     return true
 end
 
 function DB.getAutoPayEnabled(user_id)
-    if not user_id then return false end
+    if not user_id then return true end  -- Default to true for convenience
     ensureAutopayColumn()
+    
+    -- First, log what's actually in the database
+    local rawDbValue = MySQL.scalar.await('SELECT autopay_enabled FROM taxi_users WHERE citizenid = ? LIMIT 1', { user_id })
+    print(('[qbx_taxijob] [DB] RAW DATABASE VALUE for %s: %s (type: %s)'):format(
+        user_id, tostring(rawDbValue), type(rawDbValue)
+    ))
+    
     local ok, val = pcall(function()
-        return MySQL.scalar.await('SELECT autopay_enabled FROM taxi_users WHERE citizenid = ? LIMIT 1', { user_id })
+        return rawDbValue
     end)
     if not ok then
         -- If the column truly doesn't exist yet, attempt to create then retry once
@@ -134,12 +147,34 @@ function DB.getAutoPayEnabled(user_id)
             return MySQL.scalar.await('SELECT autopay_enabled FROM taxi_users WHERE citizenid = ? LIMIT 1', { user_id })
         end)
         if retryOk then
-            return (tonumber(retryVal) or 0) == 1
+            -- NULL or 0 = false (explicitly disabled), 1 = true (enabled), NULL = true (not set, default to ON)
+            if retryVal == nil then
+                print(('[qbx_taxijob] [DB] getAutoPayEnabled (retry) - User: %s, DB Val: NULL (not set), Defaulting to: true'):format(user_id))
+                return true  -- User hasn't set preference yet, default to ON
+            end
+            local result = tonumber(retryVal) == 1
+            print(('[qbx_taxijob] [DB] getAutoPayEnabled (retry) - User: %s, DB Val: %s, Result: %s'):format(user_id, tostring(retryVal), tostring(result)))
+            return result
         else
-            return false
+            print(('[qbx_taxijob] [DB] getAutoPayEnabled (retry failed) - User: %s, Defaulting to: true'):format(user_id))
+            return true  -- On error, default to ON (user-friendly)
         end
     end
-    return (tonumber(val) or 0) == 1
+    -- NULL or 0 = false (explicitly disabled), 1 = true (enabled), NULL = true (not set, default to ON)
+    if val == nil then
+        print(('[qbx_taxijob] [DB] getAutoPayEnabled - User: %s, DB Val: NULL (not set), Defaulting to: true'):format(user_id))
+        return true  -- User hasn't set preference yet, default to ON
+    end
+    
+    -- Explicit conversion: handle both integer 1 and string '1'
+    local numVal = tonumber(val)
+    local result = (numVal ~= nil and numVal == 1) or val == true
+    
+    print(('[qbx_taxijob] [DB] getAutoPayEnabled - User: %s, DB Val: %s (type: %s), tonumber: %s, Result: %s'):format(
+        user_id, tostring(val), type(val), tostring(numVal), tostring(result)
+    ))
+    
+    return result
 end
 
 -- ============================================================================
